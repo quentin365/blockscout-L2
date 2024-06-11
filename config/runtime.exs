@@ -1047,6 +1047,11 @@ config :indexer, Indexer.Fetcher.Celo.EpochBlockOperations.Supervisor,
   enabled: celo_epoch_fetchers_enabled?,
   disabled?: not celo_epoch_fetchers_enabled?
 
+config :ex_aws,
+  json_codec: Jason,
+  access_key_id: System.get_env("AWS_ACCESS_KEY_ID"),
+  secret_access_key: System.get_env("AWS_SECRET_ACCESS_KEY")
+
 Code.require_file("#{config_env()}.exs", "config/runtime")
 
 for config <- "../apps/*/config/runtime/#{config_env()}.exs" |> Path.expand(__DIR__) |> Path.wildcard() do
