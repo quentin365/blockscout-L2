@@ -13,7 +13,7 @@ defmodule NFTMediaHandler.Dispatcher do
 
   def init(_) do
     Process.send(self(), :spawn_tasks, [])
-    GenServer.cast(__MODULE__, :spawn_tasks)
+
     {:ok, %{max_concurrency: 10, current_concurrency: 0, batch_size: 1, waiting_timeout: 100}}
   end
 
@@ -39,8 +39,14 @@ defmodule NFTMediaHandler.Dispatcher do
      }}
   end
 
+  def handle_info(:spawn_tasks, state) do
+    Process.send_after(self(), :spawn_tasks, timeout())
+    {:noreply, state}
+  end
+
   def handle_info({ref, _result}, %{current_concurrency: current_concurrency, ref_to_batch: tasks_map} = state) do
     Process.demonitor(ref, [:flush])
+    Process.send(self(), :spawn_tasks, [])
 
     {:noreply, %{state | current_concurrency: current_concurrency - 1, ref_to_batch: Map.drop(tasks_map, [ref])}}
   end
@@ -65,4 +71,6 @@ defmodule NFTMediaHandler.Dispatcher do
        end).ref, batch}
 
   defp batch_size(), do: 1
+
+  def timeout, do: 100
 end

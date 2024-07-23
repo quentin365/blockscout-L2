@@ -44,9 +44,9 @@ defmodule NFTMediaHandler.MixProject do
 
   defp optionally_nft_media_handler(deps) do
     if Application.get_env(:nft_media_handler, :remote?) do
-      deps ++ [{:nft_media_handler_dispatcher, in_umbrella: true}]
-    else
       deps
+    else
+      deps ++ [{:nft_media_handler_dispatcher, in_umbrella: true}]
     end
   end
 end

@@ -8,6 +8,18 @@ defmodule NFTMediaHandlerDispatcher.Queue do
   alias Explorer.Chain.Token.Instance
   alias Explorer.Prometheus.Instrumenter
 
+  def process_new_instance({:ok, %Instance{} = nft}) do
+    url = get_media_url_from_metadata(nft.metadata)
+
+    if url do
+      GenServer.cast(__MODULE__, {:add_to_queue, {nft.token_contract_address_hash, nft.token_id, url}})
+    else
+      :ignore
+    end
+  end
+
+  def process_new_instance(_), do: :ignore
+
   def add_media_to_fetch({_token_address_hash, _token_id, _media_url} = data_to_fetch) do
     GenServer.cast(__MODULE__, {:add_to_queue, data_to_fetch})
   end
@@ -112,4 +124,28 @@ defmodule NFTMediaHandlerDispatcher.Queue do
   end
 
   defp in_memory_queue_limit, do: Application.get_env(:nft_media_handler, :in_memory_queue_limit)
+
+  def get_media_url_from_metadata(metadata) when is_map(metadata) do
+    result =
+      cond do
+        metadata["image_url"] ->
+          metadata["image_url"]
+
+        metadata["image"] ->
+          metadata["image"]
+
+        is_binary(metadata["properties"]["image"]) ->
+          metadata["properties"]["image"]
+
+        metadata["animation_url"] ->
+          retrieve_image(metadata["animation_url"])
+
+        true ->
+          nil
+      end
+
+    if result && String.trim(result) == "", do: nil, else: result
+  end
+
+  def get_media_url_from_metadata(nil, _), do: nil
 end
