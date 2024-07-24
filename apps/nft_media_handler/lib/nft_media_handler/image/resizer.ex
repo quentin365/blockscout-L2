@@ -36,6 +36,6 @@ defmodule NFTMediaHandler.Image.Resizer do
   def sizes, do: @sizes
 
   def generate_file_name(url, extension, size) do
-    "#{:sha |> :crypto.hash("#{url}_#{DateTime.to_unix(DateTime.utc_now())}") |> Base.encode16(case: :lower)}_#{size}#{extension}"
+    "#{:sha |> :crypto.hash(url) |> Base.encode16(case: :lower)}_#{size}#{extension}"
   end
 end

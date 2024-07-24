@@ -2,6 +2,7 @@ defmodule NFTMediaHandler.Dispatcher do
   use GenServer
 
   alias Task.Supervisor, as: TaskSupervisor
+  require Logger
 
   def start_link(_) do
     GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
@@ -14,9 +15,10 @@ defmodule NFTMediaHandler.Dispatcher do
   def init(_) do
     Process.send(self(), :spawn_tasks, [])
 
-    {:ok, %{max_concurrency: 10, current_concurrency: 0, batch_size: 1, waiting_timeout: 100}}
+    {:ok, %{max_concurrency: 10, current_concurrency: 0, batch_size: 1, waiting_timeout: 100, ref_to_batch: %{}}}
   end
 
+  # todo: add spawn with timeout
   def handle_info(
         :spawn_tasks,
         %{max_concurrency: max_concurrency, current_concurrency: current_concurrency, ref_to_batch: tasks_map} = state
@@ -30,6 +32,8 @@ defmodule NFTMediaHandler.Dispatcher do
       |> NFTMediaHandlerDispatcherInterface.get_urls()
       |> Enum.chunk_every(batch_size)
       |> Enum.map(&run_task/1)
+
+      Process.send_after(self(), :spawn_tasks, timeout())
 
     {:noreply,
      %{
@@ -56,6 +60,8 @@ defmodule NFTMediaHandler.Dispatcher do
         %{current_concurrency: current_concurrency, ref_to_batch: tasks_map} = state
       ) do
     {url, tasks_map_updated} = Map.pop(tasks_map, ref)
+    Logger.error("Failed to fetch and upload url (#{url}): #{reason}")
+
     NFTMediaHandlerDispatcherInterface.store_result({:down, reason}, url)
     Process.send(self(), :spawn_tasks, [])
 

@@ -127,7 +127,7 @@ defmodule NFTMediaHandler do
     extension
   end
 
-  def image_to_binary(resized_image, _file_name, extension) when extension in [".jpg", ".png"] do
+  def image_to_binary(resized_image, _file_name, extension) when extension in [".jpg", ".png", ".webp"] do
     VipsImage.write_to_buffer(resized_image, "#{extension}[Q=70,strip]")
   end
 
@@ -149,4 +149,17 @@ defmodule NFTMediaHandler do
         :error
     end
   end
+
+  # defp fetch_json_from_uri({:ok, ["#{@ipfs_protocol}ipfs/" <> right]}, _ipfs?, _token_id, hex_token_id, _from_base_uri?) do
+  #   fetch_from_ipfs(right, hex_token_id)
+  # end
+
+  # defp fetch_json_from_uri({:ok, ["ipfs/" <> right]}, _ipfs?, _token_id, hex_token_id, _from_base_uri?) do
+  #   fetch_from_ipfs(right, hex_token_id)
+  # end
+
+  # defp fetch_json_from_uri({:ok, [@ipfs_protocol <> right]}, _ipfs?, _token_id, hex_token_id, _from_base_uri?) do
+  #   fetch_from_ipfs(right, hex_token_id)
+  # end
+
 end

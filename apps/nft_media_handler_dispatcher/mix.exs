@@ -1,4 +1,4 @@
-defmodule NftMediaHandlerDispatcher.MixProject do
+defmodule NFTMediaHandlerDispatcher.MixProject do
   use Mix.Project
 
   def project do
@@ -17,6 +17,7 @@ defmodule NftMediaHandlerDispatcher.MixProject do
 
   def application do
     [
+      mod: {NFTMediaHandlerDispatcher.Application, []},
       extra_applications: [:logger]
     ]
   end

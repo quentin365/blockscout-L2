@@ -639,13 +639,13 @@ defmodule Explorer.Chain.Token.Instance do
     )
   end
 
-  def set_media_urls({token_contract_address_hash, token_id}, urls, media_type) do
+  def set_media_urls({token_contract_address_hash, token_id}, urls, {type, subtype}) do
     now = DateTime.utc_now()
 
     token_id
     |> token_instance_query(token_contract_address_hash)
     |> Repo.update_all(
-      [set: [media_urls: urls, updated_at: now]],
+      [set: [media_urls: urls, media_type: "#{type}/#{subtype}", updated_at: now]],
       timeout: @timeout
     )
   end

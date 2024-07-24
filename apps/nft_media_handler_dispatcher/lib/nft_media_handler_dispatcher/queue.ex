@@ -28,13 +28,22 @@ defmodule NFTMediaHandlerDispatcher.Queue do
     GenServer.call(__MODULE__, {:get_urls_to_fetch, amount})
   end
 
-  def store_result({:down, _reason}, urls) do
+  def store_result(:error, url) do
+    GenServer.cast(__MODULE__, {:drop, url})
+  end
+
+  def store_result({:down, _reason}, url) do
+    dbg("down_reason")
+    dbg()
     # somehow handle
+    GenServer.cast(__MODULE__, {:drop, url})
     :ok
   end
 
-  def store_result({result, media_type}, urls) do
-    GenServer.cast(__MODULE__, {:finished, result, urls, media_type})
+  def store_result({result, media_type}, url) do
+    dbg("store result")
+    dbg()
+    GenServer.cast(__MODULE__, {:finished, result, url, media_type})
   end
 
   def start_link(_) do
@@ -81,6 +90,13 @@ defmodule NFTMediaHandlerDispatcher.Queue do
     Enum.map(instances, fn {_, instance_identifier} ->
       Instance.set_media_urls(instance_identifier, result, media_type)
     end)
+
+    {:noreply, state}
+  end
+
+  def handle_cast({:drop, url}, {queue, in_progress, _in_memory_queue} = state) do
+    :dets.delete(queue, url)
+    :dets.delete(in_progress, url)
 
     {:noreply, state}
   end
@@ -138,7 +154,7 @@ defmodule NFTMediaHandlerDispatcher.Queue do
           metadata["properties"]["image"]
 
         metadata["animation_url"] ->
-          retrieve_image(metadata["animation_url"])
+          metadata["animation_url"]
 
         true ->
           nil
@@ -147,5 +163,5 @@ defmodule NFTMediaHandlerDispatcher.Queue do
     if result && String.trim(result) == "", do: nil, else: result
   end
 
-  def get_media_url_from_metadata(nil, _), do: nil
+  def get_media_url_from_metadata(nil), do: nil
 end

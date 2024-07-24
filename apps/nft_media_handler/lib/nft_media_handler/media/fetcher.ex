@@ -4,7 +4,7 @@ defmodule NFTMediaHandler.Media.Fetcher do
   """
 
   # , "svg+xml"
-  @supported_image_types ["png", "jpeg", "gif"]
+  @supported_image_types ["png", "jpeg", "gif", "webp"]
   @supported_video_types ["mp4"]
 
   def fetch_media(url) when is_binary(url) do
