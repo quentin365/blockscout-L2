@@ -33,7 +33,7 @@ defmodule NFTMediaHandler.Dispatcher do
       |> Enum.chunk_every(batch_size)
       |> Enum.map(&run_task/1)
 
-      Process.send_after(self(), :spawn_tasks, timeout())
+    Process.send_after(self(), :spawn_tasks, timeout())
 
     {:noreply,
      %{

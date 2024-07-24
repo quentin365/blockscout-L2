@@ -3,15 +3,14 @@ defmodule NFTMediaHandler.Media.Fetcher do
     Module fetches media from various sources
   """
 
-  # , "svg+xml"
   @supported_image_types ["png", "jpeg", "gif", "webp"]
   @supported_video_types ["mp4"]
 
-  def fetch_media(url) when is_binary(url) do
-    with media_type <- media_type(url),
+  def fetch_media(url, headers) when is_binary(url) do
+    with media_type <- media_type(url, headers),
          {:support, true} <- {:support, media_type_supported?(media_type)},
          {:ok, %HTTPoison.Response{status_code: 200, body: body}} <-
-           HTTPoison.get(url, [], follow_redirect: true, max_body_length: 20_000_000) do
+           HTTPoison.get(url, headers, follow_redirect: true, max_body_length: 20_000_000) do
       {:ok, media_type, body}
     else
       {:support, false} ->
@@ -25,26 +24,16 @@ defmodule NFTMediaHandler.Media.Fetcher do
     end
   end
 
-  # def media_type("data:image/" <> data) do
-  #   [type, _] = String.split(data, ";", parts: 2)
-  #   {"image", type}
-  # end
-
-  # def media_type("data:video/" <> data) do
-  #   [type, _] = String.split(data, ";", parts: 2)
-  #   {"video", type}
-  # end
-
-  def media_type("data:" <> _data) do
+  def media_type("data:" <> _data, _headers) do
     nil
   end
 
-  def media_type(media_src) when not is_nil(media_src) do
+  def media_type(media_src, headers) when not is_nil(media_src) do
     ext = media_src |> Path.extname() |> String.trim()
 
     mime_type =
       if ext == "" do
-        process_missing_extension(media_src)
+        process_missing_extension(media_src, headers)
       else
         ext_with_dot =
           media_src
@@ -63,7 +52,7 @@ defmodule NFTMediaHandler.Media.Fetcher do
     end
   end
 
-  def media_type(nil), do: nil
+  def media_type(nil, _headers), do: nil
 
   @spec media_type_supported?(any()) :: boolean()
   def media_type_supported?({"image", image_type}) when image_type in @supported_image_types do
@@ -78,8 +67,8 @@ defmodule NFTMediaHandler.Media.Fetcher do
     false
   end
 
-  def process_missing_extension(media_src) do
-    case HTTPoison.head(media_src, [], follow_redirect: true) do
+  def process_missing_extension(media_src, headers) do
+    case HTTPoison.head(media_src, headers, follow_redirect: true) do
       {:ok, %HTTPoison.Response{status_code: 200, headers: headers}} ->
         headers_map = Map.new(headers, fn {key, value} -> {String.downcase(key), value} end)
         headers_map["content-type"]

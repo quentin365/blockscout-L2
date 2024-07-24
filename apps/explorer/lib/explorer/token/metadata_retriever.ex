@@ -441,7 +441,7 @@ defmodule Explorer.Token.MetadataRetriever do
   end
 
   @spec ipfs_link(uid :: any()) :: String.t()
-  def ipfs_link(uid) do
+  defp ipfs_link(uid) do
     base_url =
       :indexer
       |> Application.get_env(:ipfs)
