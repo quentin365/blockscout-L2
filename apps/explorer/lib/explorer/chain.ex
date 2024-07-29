@@ -1167,11 +1167,20 @@ defmodule Explorer.Chain do
         %{smart_contract: smart_contract} ->
           if smart_contract do
             CheckBytecodeMatchingOnDemand.trigger_check(address_result, smart_contract)
-            LookUpSmartContractSourcesOnDemand.trigger_fetch(address_result, smart_contract)
+
+            LookUpSmartContractSourcesOnDemand.trigger_fetch(
+              to_string(address_result.hash),
+              address_result.contract_code,
+              smart_contract
+            )
 
             SmartContract.check_and_update_constructor_args(address_result)
           else
-            LookUpSmartContractSourcesOnDemand.trigger_fetch(address_result, nil)
+            LookUpSmartContractSourcesOnDemand.trigger_fetch(
+              to_string(address_result.hash),
+              address_result.contract_code,
+              nil
+            )
 
             {implementation_address_hashes, _} =
               Implementation.get_implementation(
@@ -1190,7 +1199,13 @@ defmodule Explorer.Chain do
           end
 
         _ ->
-          LookUpSmartContractSourcesOnDemand.trigger_fetch(address_result, nil)
+          if address_result do
+            LookUpSmartContractSourcesOnDemand.trigger_fetch(
+              to_string(address_result.hash),
+              address_result.contract_code,
+              nil
+            )
+          end
 
           address_result
       end
@@ -2269,7 +2284,7 @@ defmodule Explorer.Chain do
                 (SELECT b1.number
                 FROM generate_series((?)::integer, (?)::integer) AS b1(number)
                 WHERE NOT EXISTS
-                  (SELECT 1 FROM blocks b2 WHERE b2.number=b1.number AND b2.consensus))
+                  (SELECT 1 FROM blocks b2 WHERE b2.number=b1.number AND b2.consensus AND NOT b2.refetch_needed))
               """,
               ^from_block_number,
               ^to_block_number
@@ -2485,18 +2500,21 @@ defmodule Explorer.Chain do
   end
 
   @doc """
-    Finds the block number closest to a given timestamp, with a one-minute buffer, optionally
-    adjusting based on whether the block should be before or after the timestamp.
+    Finds the block number closest to a given timestamp, optionally adjusting
+    based on whether the block should be before or after the timestamp.
 
     ## Parameters
-    - `given_timestamp`: The timestamp for which the closest block number is being sought.
-    - `closest`: A direction indicator (`:before` or `:after`) specifying whether the block number
-                returned should be before or after the given timestamp.
-    - `from_api`: A boolean flag indicating whether to use the replica database or the primary one
-                  for the query.
+    - `given_timestamp`: The timestamp for which the closest block number is
+      being sought.
+    - `closest`: A direction indicator (`:before` or `:after`) specifying
+                whether the block number returned should be before or after the
+                given timestamp.
+    - `from_api`: A boolean flag indicating whether to use the replica database
+                  or the primary one for the query.
 
     ## Returns
-    - `{:ok, block_number}` where `block_number` is the block number closest to the specified timestamp.
+    - `{:ok, block_number}` where `block_number` is the block number closest to
+      the specified timestamp.
     - `{:error, :not_found}` if no block is found within the specified criteria.
   """
   @spec timestamp_to_block_number(DateTime.t(), :before | :after, boolean()) ::
@@ -2504,19 +2522,35 @@ defmodule Explorer.Chain do
   def timestamp_to_block_number(given_timestamp, closest, from_api) do
     {:ok, t} = Timex.format(given_timestamp, "%Y-%m-%d %H:%M:%S", :strftime)
 
-    inner_query =
+    consensus_blocks_query =
       from(
         block in Block,
-        where: block.consensus == true,
-        where:
-          fragment("? <= TO_TIMESTAMP(?, 'YYYY-MM-DD HH24:MI:SS') + (1 * interval '1 minute')", block.timestamp, ^t),
-        where:
-          fragment("? >= TO_TIMESTAMP(?, 'YYYY-MM-DD HH24:MI:SS') - (1 * interval '1 minute')", block.timestamp, ^t)
+        where: block.consensus == true
       )
+
+    gt_timestamp_query =
+      from(
+        block in consensus_blocks_query,
+        where: fragment("? >= TO_TIMESTAMP(?, 'YYYY-MM-DD HH24:MI:SS')", block.timestamp, ^t),
+        order_by: [asc: block.timestamp],
+        limit: 1,
+        select: block
+      )
+
+    lt_timestamp_query =
+      from(
+        block in consensus_blocks_query,
+        where: fragment("? <= TO_TIMESTAMP(?, 'YYYY-MM-DD HH24:MI:SS')", block.timestamp, ^t),
+        order_by: [desc: block.timestamp],
+        limit: 1,
+        select: block
+      )
+
+    union_query = lt_timestamp_query |> subquery() |> union(^gt_timestamp_query)
 
     query =
       from(
-        block in subquery(inner_query),
+        block in subquery(union_query),
         select: block,
         order_by:
           fragment("abs(extract(epoch from (? - TO_TIMESTAMP(?, 'YYYY-MM-DD HH24:MI:SS'))))", block.timestamp, ^t),
@@ -2549,11 +2583,11 @@ defmodule Explorer.Chain do
         end
 
       :after ->
-        if DateTime.compare(timestamp, given_timestamp) == :lt ||
+        if DateTime.compare(timestamp, given_timestamp) == :gt ||
              DateTime.compare(timestamp, given_timestamp) == :eq do
-          BlockNumberHelper.next_block_number(number)
-        else
           number
+        else
+          BlockNumberHelper.next_block_number(number)
         end
     end
   end
