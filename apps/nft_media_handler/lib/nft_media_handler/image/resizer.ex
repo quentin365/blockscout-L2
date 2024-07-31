@@ -6,8 +6,6 @@ defmodule NFTMediaHandler.Image.Resizer do
   @sizes [{60, "60x60"}, {250, "250x250"}, {500, "500x500"}]
   require Logger
 
-  alias Vix.Vips.Image, as: VipsImage
-
   def resize(image, url, extension) do
     max_size = max(Image.width(image), Image.height(image) / Image.pages(image))
 

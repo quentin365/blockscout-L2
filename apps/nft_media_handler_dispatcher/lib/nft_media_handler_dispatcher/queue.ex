@@ -7,6 +7,7 @@ defmodule NFTMediaHandlerDispatcher.Queue do
 
   alias Explorer.Chain.Token.Instance
   alias Explorer.Prometheus.Instrumenter
+  alias Explorer.Token.MetadataRetriever
 
   def process_new_instance({:ok, %Instance{} = nft}) do
     url = get_media_url_from_metadata(nft.metadata)
@@ -28,15 +29,15 @@ defmodule NFTMediaHandlerDispatcher.Queue do
     GenServer.call(__MODULE__, {:get_urls_to_fetch, amount})
   end
 
-  def store_result(:error, url) do
-    GenServer.cast(__MODULE__, {:drop, url})
+  def store_result({:error, reason}, url) do
+    GenServer.cast(__MODULE__, {:handle_error, url, reason})
   end
 
-  def store_result({:down, _reason}, url) do
+  def store_result({:down, reason}, url) do
     dbg("down_reason")
     dbg()
     # somehow handle
-    GenServer.cast(__MODULE__, {:drop, url})
+    GenServer.cast(__MODULE__, {:handle_error, url, reason})
     :ok
   end
 
@@ -85,6 +86,7 @@ defmodule NFTMediaHandlerDispatcher.Queue do
     :dets.delete(queue, url)
     :dets.delete(in_progress, url)
 
+    Instrumenter.increment_successfully_uploaded_media_number()
     Instrumenter.media_processing_time(System.convert_time_unit(now - start_time, :native, :millisecond) / 1000)
 
     Enum.map(instances, fn {_, instance_identifier} ->
@@ -94,9 +96,17 @@ defmodule NFTMediaHandlerDispatcher.Queue do
     {:noreply, state}
   end
 
-  def handle_cast({:drop, url}, {queue, in_progress, _in_memory_queue} = state) do
+  def handle_cast({:handle_error, url, reason}, {queue, in_progress, _in_memory_queue} = state) do
+    instances = :dets.lookup(queue, url)
+
     :dets.delete(queue, url)
     :dets.delete(in_progress, url)
+
+    Instrumenter.increment_failed_uploading_media_number()
+
+    Enum.map(instances, fn {_, instance_identifier} ->
+      Instance.set_cdn_upload_error(instance_identifier, reason |> inspect() |> MetadataRetriever.truncate_error())
+    end)
 
     {:noreply, state}
   end

@@ -21,7 +21,7 @@ defmodule NFTMediaHandler do
     else
       {:error, reason} ->
         Logger.warning("Error on fetching media: #{inspect(reason)}, from url (#{url})")
-        :error
+        {:error, reason}
     end
   end
 

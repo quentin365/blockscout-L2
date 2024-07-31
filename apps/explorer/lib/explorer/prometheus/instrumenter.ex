@@ -63,6 +63,18 @@ defmodule Explorer.Prometheus.Instrumenter do
     registry: :public
   ]
 
+  @counter [
+    name: :successfully_uploaded_media_number,
+    help: "Number of successfully uploaded media to CDN",
+    registry: :public
+  ]
+
+  @counter [
+    name: :failed_uploading_media_number,
+    help: "Number of failed uploading to CDN media",
+    registry: :public
+  ]
+
   def block_import_stage_runner(function, stage, runner, step) do
     {time, result} = :timer.tc(function)
 
@@ -106,5 +118,13 @@ defmodule Explorer.Prometheus.Instrumenter do
 
   def simplified_active_addresses_number(number) do
     Gauge.set([name: :active_addresses_number, registry: :public], number)
+  end
+
+  def increment_successfully_uploaded_media_number do
+    Counter.inc(name: :successfully_uploaded_media_number, registry: :public)
+  end
+
+  def increment_failed_uploading_media_number do
+    Counter.inc(name: :failed_uploading_media_number, registry: :public)
   end
 end

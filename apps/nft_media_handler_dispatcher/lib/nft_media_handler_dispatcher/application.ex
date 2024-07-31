@@ -4,7 +4,10 @@ defmodule NFTMediaHandlerDispatcher.Application do
   @impl Application
   def start(_type, _args) do
     children = [
-      # Supervisor.child_spec({Task.Supervisor, name: NFTMediaHandler.TaskSupervisor}, id: NFTMediaHandler.TaskSupervisor),
+      # for backfiller
+      Supervisor.child_spec({Task.Supervisor, name: NFTMediaHandlerDispatcher.TaskSupervisor},
+        id: NFTMediaHandlerDispatcher.TaskSupervisor
+      ),
       NFTMediaHandlerDispatcher.Queue
     ]
 
