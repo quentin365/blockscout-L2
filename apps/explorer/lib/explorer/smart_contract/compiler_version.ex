@@ -47,17 +47,22 @@ defmodule Explorer.SmartContract.CompilerVersion do
     if RustVerifierInterface.enabled?() do
       fetch_compiler_versions_sc_verified_enabled(compiler_list_fn, compiler_type)
     else
-      headers = [{"Content-Type", "application/json"}]
+      if compiler_type == :zk do
+        {:ok, []}
+      else
+        headers = [{"Content-Type", "application/json"}]
 
-      case HTTPoison.get(source_url(compiler_type), headers) do
-        {:ok, %{status_code: 200, body: body}} ->
-          {:ok, format_data(body, compiler_type)}
+        # credo:disable-for-next-line
+        case HTTPoison.get(source_url(compiler_type), headers) do
+          {:ok, %{status_code: 200, body: body}} ->
+            {:ok, format_data(body, compiler_type)}
 
-        {:ok, %{status_code: _status_code, body: body}} ->
-          {:error, Helper.decode_json(body)["error"]}
+          {:ok, %{status_code: _status_code, body: body}} ->
+            {:error, Helper.decode_json(body)["error"]}
 
-        {:error, %{reason: reason}} ->
-          {:error, reason}
+          {:error, %{reason: reason}} ->
+            {:error, reason}
+        end
       end
     end
   end
@@ -157,7 +162,7 @@ defmodule Explorer.SmartContract.CompilerVersion do
     end
   end
 
-  @spec source_url(:solc | :vyper) :: String.t()
+  @spec source_url(:solc | :zk | :vyper) :: String.t()
   defp source_url(compiler) do
     case compiler do
       :solc ->
