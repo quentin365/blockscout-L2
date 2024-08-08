@@ -12,11 +12,12 @@ defmodule Explorer.SmartContract.CompilerVersion do
   @doc """
   Fetches a list of compilers from the Ethereum Solidity API.
   """
-  @spec fetch_versions(:solc | :vyper) :: {atom, [map]}
+  @spec fetch_versions(:solc | :vyper | :zk) :: {atom, [map]}
   def fetch_versions(compiler) do
     case compiler do
       :solc -> fetch_solc_versions()
       :vyper -> fetch_vyper_versions()
+      :zk -> fetch_zk_versions()
     end
   end
 
@@ -34,13 +35,17 @@ defmodule Explorer.SmartContract.CompilerVersion do
     fetch_compiler_versions(&RustVerifierInterface.get_versions_list/0, :solc)
   end
 
+  defp fetch_zk_versions do
+    fetch_compiler_versions(&RustVerifierInterface.get_versions_list/0, :zk)
+  end
+
   defp fetch_vyper_versions do
     fetch_compiler_versions(&RustVerifierInterface.vyper_get_versions_list/0, :vyper)
   end
 
   defp fetch_compiler_versions(compiler_list_fn, compiler_type) do
     if RustVerifierInterface.enabled?() do
-      compiler_list_fn.()
+      fetch_compiler_versions_sc_verified_enabled(compiler_list_fn, compiler_type)
     else
       headers = [{"Content-Type", "application/json"}]
 
@@ -54,6 +59,29 @@ defmodule Explorer.SmartContract.CompilerVersion do
         {:error, %{reason: reason}} ->
           {:error, reason}
       end
+    end
+  end
+
+  defp fetch_compiler_versions_sc_verified_enabled(compiler_list_fn, compiler_type) do
+    if Application.get_env(:explorer, :chain_type) == :zksync do
+      # todo: refactor opportunity, currently, Blockscout 2 identical requests to microservice in order to get
+      # Solc and Zk compiler versions
+      case compiler_list_fn.() do
+        {:ok, {solc_compilers, zk_compilers}} ->
+          choose_compiler(compiler_type, %{:solc_compilers => solc_compilers, :zk_compilers => zk_compilers})
+
+        _ ->
+          {:error, "Verifier microservice is unavailable"}
+      end
+    else
+      compiler_list_fn.()
+    end
+  end
+
+  defp choose_compiler(compiler_type, compilers) do
+    case compiler_type do
+      :solc -> {:ok, compilers.solc_compilers}
+      :zk -> {:ok, compilers.zk_compilers}
     end
   end
 
