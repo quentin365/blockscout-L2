@@ -518,6 +518,9 @@ defmodule BlockScoutWeb.API.V2.TransactionView do
           render(__MODULE__, "revert_reason.json", raw: hex)
       end
     end
+  rescue
+    _ ->
+      nil
   end
 
   @doc """
@@ -904,6 +907,16 @@ defmodule BlockScoutWeb.API.V2.TransactionView do
       defp chain_type_fields(result, transaction, _single_tx?, _conn, _watchlist_names) do
         # credo:disable-for-next-line Credo.Check.Design.AliasUsage
         BlockScoutWeb.API.V2.EthereumView.extend_transaction_json_response(result, transaction)
+      end
+
+    :celo ->
+      defp chain_type_transformations(transactions) do
+        transactions
+      end
+
+      defp chain_type_fields(result, transaction, _single_tx?, _conn, _watchlist_names) do
+        # credo:disable-for-next-line Credo.Check.Design.AliasUsage
+        BlockScoutWeb.API.V2.CeloView.extend_transaction_json_response(result, transaction)
       end
 
     _ ->
