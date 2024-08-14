@@ -11,7 +11,7 @@ defmodule Explorer.SmartContract.Solidity.VerifierTest do
   alias Explorer.Factory
 
   if Application.compile_env(:explorer, :chain_type) == :zksync do
-    @optimization_runs "200"
+    @optimization_runs "0"
   else
     @optimization_runs 200
   end

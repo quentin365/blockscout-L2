@@ -315,7 +315,12 @@ defmodule Explorer.SmartContract.Solidity.CodeCompiler do
   defp optimize_value("true"), do: "1"
 
   defp optimization_runs(params) do
-    value = params |> Keyword.get(:optimization_runs, "200")
+    optimization_runs =
+      if Application.get_env(:explorer, :chain_type) == :zksync,
+        do: "0",
+        else: "200"
+
+    value = params |> Keyword.get(:optimization_runs, optimization_runs)
 
     if is_binary(value) do
       value

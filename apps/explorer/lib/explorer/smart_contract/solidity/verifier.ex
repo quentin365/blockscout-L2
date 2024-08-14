@@ -26,7 +26,7 @@ defmodule Explorer.SmartContract.Solidity.Verifier do
   @bytecode_hash_options ["default", "none", "bzzr1"]
 
   if Application.compile_env(:explorer, :chain_type) == :zksync do
-    @optimization_runs "200"
+    @optimization_runs "0"
   else
     @optimization_runs 200
   end
