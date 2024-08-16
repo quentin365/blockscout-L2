@@ -1,4 +1,4 @@
-name: ETH Sepolia Publish Docker image
+name: Ethereum Sepolia Publish Docker image
 
 on:
   workflow_dispatch:
