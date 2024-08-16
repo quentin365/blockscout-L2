@@ -85,15 +85,14 @@ defmodule Explorer.Chain do
   alias Explorer.Chain.Fetcher.{CheckBytecodeMatchingOnDemand, LookUpSmartContractSourcesOnDemand}
   alias Explorer.Chain.Import.Runner
   alias Explorer.Chain.InternalTransaction.{CallType, Type}
-  alias Explorer.Chain.SmartContract.Proxy
-  alias Explorer.Chain.SmartContract.Proxy.Models.Implementation
 
   alias Explorer.Market.MarketHistoryCache
   alias Explorer.{PagingOptions, Repo}
 
   alias Dataloader.Ecto, as: DataloaderEcto
 
-  @default_paging_options %PagingOptions{page_size: 50}
+  @default_page_size 50
+  @default_paging_options %PagingOptions{page_size: @default_page_size}
 
   @token_transfers_per_transaction_preview 10
   @token_transfers_necessity_by_association %{
@@ -121,7 +120,6 @@ defmodule Explorer.Chain do
   @revert_msg_prefix_6_empty "execution reverted"
 
   @limit_showing_transactions 10_000
-  @default_page_size 50
 
   @typedoc """
   The name of an association on the `t:Ecto.Schema.t/0`
@@ -377,26 +375,15 @@ defmodule Explorer.Chain do
         to_block = to_block(options)
 
         base =
-          if DenormalizationHelper.transactions_denormalization_finished?() do
-            from(log in Log,
-              order_by: [desc: log.block_number, desc: log.index],
-              where: log.address_hash == ^address_hash,
-              limit: ^paging_options.page_size,
-              select: log,
-              inner_join: transaction in assoc(log, :transaction),
-              where: transaction.block_consensus == true
-            )
-          else
-            from(log in Log,
-              order_by: [desc: log.block_number, desc: log.index],
-              where: log.address_hash == ^address_hash,
-              limit: ^paging_options.page_size,
-              select: log,
-              inner_join: block in Block,
-              on: block.hash == log.block_hash,
-              where: block.consensus == true
-            )
-          end
+          from(log in Log,
+            order_by: [desc: log.block_number, desc: log.index],
+            where: log.address_hash == ^address_hash,
+            limit: ^paging_options.page_size,
+            select: log,
+            inner_join: block in Block,
+            on: block.hash == log.block_hash,
+            where: block.consensus == true
+          )
 
         preloaded_query =
           if csv_export? do
@@ -1147,7 +1134,8 @@ defmodule Explorer.Chain do
       options
       |> Keyword.get(:necessity_by_association, %{})
       |> Map.merge(%{
-        [smart_contract: :smart_contract_additional_sources] => :optional
+        [smart_contract: :smart_contract_additional_sources] => :optional,
+        :proxy_implementations => :optional
       })
 
     query =
@@ -1182,20 +1170,7 @@ defmodule Explorer.Chain do
               nil
             )
 
-            {implementation_address_hashes, _} =
-              Implementation.get_implementation(
-                %{
-                  updated: %SmartContract{
-                    address_hash: hash
-                  },
-                  implementation_updated_at: nil,
-                  implementation_address_fetched?: false,
-                  refetch_necessity_checked?: false
-                },
-                Keyword.put(options, :proxy_without_abi?, true)
-              )
-
-            add_implementation_and_bytecode_twin_to_result(address_result, implementation_address_hashes, hash, options)
+            add_bytecode_twin_to_result(address_result, hash, options)
           end
 
         _ ->
@@ -1217,31 +1192,12 @@ defmodule Explorer.Chain do
     end
   end
 
-  defp add_implementation_and_bytecode_twin_to_result(address_result, implementation_address_hashes, hash, options) do
-    # implementation is added only in the case when mapping proxy to implementation is 1:1 (excluding Diamond proxy)
-    {implementation_smart_contract, implementation_address_hash} =
-      if implementation_address_hashes && Enum.count(implementation_address_hashes) == 1 do
-        implementation_address_hash = implementation_address_hashes |> Enum.at(0)
-
-        implementation_smart_contract =
-          implementation_address_hash
-          |> Proxy.implementation_to_smart_contract(options)
-
-        {implementation_smart_contract, implementation_address_hash}
-      else
-        {nil, nil}
-      end
-
+  defp add_bytecode_twin_to_result(address_result, hash, options) do
     address_verified_bytecode_twin_contract =
-      implementation_smart_contract ||
-        SmartContract.get_address_verified_bytecode_twin_contract(hash, options).verified_contract
+      SmartContract.get_address_verified_bytecode_twin_contract(hash, options).verified_contract
 
     address_result
     |> SmartContract.add_bytecode_twin_info_to_contract(address_verified_bytecode_twin_contract, hash)
-    |> (&if(is_nil(implementation_smart_contract),
-          do: &1,
-          else: SmartContract.add_implementation_info_to_contract(&1, implementation_address_hash)
-        )).()
   end
 
   @spec find_decompiled_contract_address(Hash.Address.t()) :: {:ok, Address.t()} | {:error, :not_found}
@@ -1859,10 +1815,6 @@ defmodule Explorer.Chain do
     tokens = CurrencyHelper.divide_decimals(token_balance.value, decimals)
     Decimal.mult(tokens, fiat_value)
   end
-
-  def contract?(%{contract_code: nil}), do: false
-
-  def contract?(%{contract_code: _}), do: true
 
   @doc """
   Returns a stream of unfetched `t:Explorer.Chain.Address.CoinBalance.t/0`.
@@ -3090,6 +3042,19 @@ defmodule Explorer.Chain do
       _ ->
         nil
     end
+  end
+
+  @doc """
+  Fetches the raw traces of transaction.
+  """
+  @spec fetch_transaction_raw_traces(map()) :: {:ok, [map()]} | {:error, any()}
+  def fetch_transaction_raw_traces(%{hash: hash, block_number: block_number}) do
+    json_rpc_named_arguments = Application.get_env(:explorer, :json_rpc_named_arguments)
+
+    EthereumJSONRPC.fetch_transaction_raw_traces(
+      %{hash: to_string(hash), block_number: block_number},
+      json_rpc_named_arguments
+    )
   end
 
   @doc """

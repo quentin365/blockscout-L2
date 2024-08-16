@@ -23,7 +23,7 @@ defmodule EthereumJsonrpc.MixProject do
         dialyzer: :test
       ],
       start_permanent: Mix.env() == :prod,
-      version: "6.7.2"
+      version: "6.8.0"
     ]
   end
 
@@ -82,12 +82,12 @@ defmodule EthereumJsonrpc.MixProject do
       # `:verify_fun` for `Socket.Web.connect`
       {:ssl_verify_fun, "~> 1.1"},
       # `EthereumJSONRPC.WebSocket`
-      {:websocket_client, git: "https://github.com/blockscout/websocket_client.git", branch: "master", override: true},
       {:decimal, "~> 2.0"},
       {:decorator, "~> 1.4"},
       {:hackney, "~> 1.18"},
       {:poolboy, "~> 1.5.2"},
-      {:logger_json, "~> 5.1"}
+      {:logger_json, "~> 5.1"},
+      {:websockex, "~> 0.4.3"}
     ]
   end
 end

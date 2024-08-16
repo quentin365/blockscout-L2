@@ -21,7 +21,11 @@ defmodule Explorer.Chain.Arbitrum.Reader do
   alias Explorer.Chain.Block, as: FullBlock
   alias Explorer.Chain.{Hash, Log, Transaction}
 
-  @to_l2_messages_transaction_types [100, 105]
+  # https://github.com/OffchainLabs/go-ethereum/blob/dff302de66598c36b964b971f72d35a95148e650/core/types/transaction.go#L44C2-L50
+  @message_to_l2_eth_deposit 100
+  @message_to_l2_submit_retryable_tx 105
+
+  @zero_wei 0
 
   @doc """
     Retrieves the number of the latest L1 block where an L1-to-L2 message was discovered.
@@ -40,7 +44,7 @@ defmodule Explorer.Chain.Arbitrum.Reader do
       )
 
     query
-    |> Repo.one()
+    |> Repo.one(timeout: :infinity)
   end
 
   @doc """
@@ -60,7 +64,7 @@ defmodule Explorer.Chain.Arbitrum.Reader do
       )
 
     query
-    |> Repo.one()
+    |> Repo.one(timeout: :infinity)
   end
 
   @doc """
@@ -86,7 +90,7 @@ defmodule Explorer.Chain.Arbitrum.Reader do
     |> order_by(desc: :block_number)
     |> limit(1)
     |> select([log], log.block_number)
-    |> Repo.one()
+    |> Repo.one(timeout: :infinity)
   end
 
   @doc """
@@ -107,7 +111,7 @@ defmodule Explorer.Chain.Arbitrum.Reader do
     |> order_by(desc: :block_number)
     |> limit(1)
     |> select([rollup_tx], rollup_tx.block_number)
-    |> Repo.one()
+    |> Repo.one(timeout: :infinity)
   end
 
   @doc """
@@ -132,7 +136,7 @@ defmodule Explorer.Chain.Arbitrum.Reader do
     case query
          # :required is used since the situation when commit transaction is not found is not possible
          |> Chain.join_associations(%{:commitment_transaction => :required})
-         |> Repo.one() do
+         |> Repo.one(timeout: :infinity) do
       nil -> nil
       batch -> batch.commitment_transaction.block_number
     end
@@ -160,7 +164,7 @@ defmodule Explorer.Chain.Arbitrum.Reader do
     case query
          # :required is used since the situation when commit transaction is not found is not possible
          |> Chain.join_associations(%{:commitment_transaction => :required})
-         |> Repo.one() do
+         |> Repo.one(timeout: :infinity) do
       nil -> nil
       batch -> batch.commitment_transaction.block_number
     end
@@ -205,7 +209,7 @@ defmodule Explorer.Chain.Arbitrum.Reader do
         where: lt.hash in ^l1_tx_hashes
       )
 
-    Repo.all(query, timeout: :infinity)
+    Repo.all(query)
   end
 
   @doc """
@@ -227,7 +231,7 @@ defmodule Explorer.Chain.Arbitrum.Reader do
         where: lt.hash in ^l1_tx_hashes
       )
 
-    Repo.all(query, timeout: :infinity)
+    Repo.all(query)
   end
 
   @doc """
@@ -253,7 +257,7 @@ defmodule Explorer.Chain.Arbitrum.Reader do
     # :required is used since execution records in the table are created only when
     # the corresponding execution transaction is indexed
     |> Chain.join_associations(%{:execution_transaction => :required})
-    |> Repo.all(timeout: :infinity)
+    |> Repo.all()
   end
 
   @doc """
@@ -305,7 +309,7 @@ defmodule Explorer.Chain.Arbitrum.Reader do
         where: lt.block_number <= ^finalized_block and lt.status == :unfinalized
       )
 
-    Repo.all(query, timeout: :infinity)
+    Repo.all(query)
   end
 
   @doc """
@@ -357,7 +361,7 @@ defmodule Explorer.Chain.Arbitrum.Reader do
       )
 
     query
-    |> Repo.all(timeout: :infinity)
+    |> Repo.all()
   end
 
   @doc """
@@ -426,7 +430,7 @@ defmodule Explorer.Chain.Arbitrum.Reader do
     case query
          # :required is used since existence of the confirmation id is checked above
          |> Chain.join_associations(%{:confirmation_transaction => :required})
-         |> Repo.one() do
+         |> Repo.one(timeout: :infinity) do
       nil ->
         nil
 
@@ -480,7 +484,7 @@ defmodule Explorer.Chain.Arbitrum.Reader do
       )
 
     query
-    |> Repo.one()
+    |> Repo.one(timeout: :infinity)
   end
 
   @doc """
@@ -502,7 +506,7 @@ defmodule Explorer.Chain.Arbitrum.Reader do
       )
 
     query
-    |> Repo.one()
+    |> Repo.one(timeout: :infinity)
   end
 
   @doc """
@@ -532,7 +536,7 @@ defmodule Explorer.Chain.Arbitrum.Reader do
         order_by: [asc: rb.block_number]
       )
 
-    Repo.all(query, timeout: :infinity)
+    Repo.all(query)
   end
 
   @doc """
@@ -553,7 +557,7 @@ defmodule Explorer.Chain.Arbitrum.Reader do
         where: rb.batch_number == ^batch_number and not is_nil(rb.confirmation_id)
       )
 
-    Repo.aggregate(query, :count, timeout: :infinity)
+    Repo.aggregate(query, :count)
   end
 
   @doc """
@@ -588,7 +592,7 @@ defmodule Explorer.Chain.Arbitrum.Reader do
         order_by: [desc: msg.message_id]
       )
 
-    Repo.all(query, timeout: :infinity)
+    Repo.all(query)
   end
 
   def l2_to_l1_messages(status, nil) when status in [:initiated, :sent, :confirmed, :relayed] do
@@ -598,7 +602,7 @@ defmodule Explorer.Chain.Arbitrum.Reader do
         order_by: [desc: msg.message_id]
       )
 
-    Repo.all(query, timeout: :infinity)
+    Repo.all(query)
   end
 
   @doc """
@@ -704,7 +708,7 @@ defmodule Explorer.Chain.Arbitrum.Reader do
   defp do_messages_count(direction, options) do
     Message
     |> where([msg], msg.direction == ^direction)
-    |> select_repo(options).aggregate(:count, timeout: :infinity)
+    |> select_repo(options).aggregate(:count)
   end
 
   @doc """
@@ -834,6 +838,10 @@ defmodule Explorer.Chain.Arbitrum.Reader do
   # table. A message is considered missed if there is a transaction without a
   # matching message record.
   #
+  # For transactions that could be considered ETH deposits, it checks
+  # that the message value is not zero, as transactions with a zero value
+  # cannot be a deposit.
+  #
   # ## Returns
   #   - A query to retrieve missed L1-to-L2 messages.
   @spec missed_messages_to_l2_query() :: Ecto.Query.t()
@@ -841,7 +849,10 @@ defmodule Explorer.Chain.Arbitrum.Reader do
     from(rollup_tx in Transaction,
       left_join: msg in Message,
       on: rollup_tx.hash == msg.completion_transaction_hash and msg.direction == :to_l2,
-      where: rollup_tx.type in @to_l2_messages_transaction_types and is_nil(msg.completion_transaction_hash)
+      where:
+        (rollup_tx.type == ^@message_to_l2_submit_retryable_tx or
+           (rollup_tx.type == ^@message_to_l2_eth_deposit and rollup_tx.value != ^@zero_wei)) and
+          is_nil(msg.completion_transaction_hash)
     )
   end
 
@@ -1223,7 +1234,7 @@ defmodule Explorer.Chain.Arbitrum.Reader do
       )
 
     query
-    |> Repo.all(timeout: :infinity)
+    |> Repo.all()
   end
 
   @doc """
@@ -1248,7 +1259,7 @@ defmodule Explorer.Chain.Arbitrum.Reader do
       )
 
     query
-    |> Repo.all(timeout: :infinity)
+    |> Repo.all()
     |> Enum.reduce(%{}, fn {batch_number, l1_block_number}, acc ->
       Map.put(acc, batch_number, l1_block_number)
     end)
@@ -1267,6 +1278,63 @@ defmodule Explorer.Chain.Arbitrum.Reader do
         select: {min(batch.number), max(batch.number)}
       )
 
-    Repo.one(query)
+    Repo.one(query, timeout: :infinity)
+  end
+
+  #####################################################################################
+  ### Below are the functions that implement functionality not specific to Arbitrum ###
+  #####################################################################################
+
+  @doc """
+    Checks if a block with the given block number exists.
+
+    This function queries the database to determine if a block with the specified
+    block number exists and has been marked as having reached consensus.
+
+    ## Parameters
+    - `block_number`: The number of the block to check.
+
+    ## Returns
+    - `true` if the block exists and has reached consensus.
+    - `false` otherwise.
+  """
+  @spec rollup_block_exists?(FullBlock.block_number()) :: boolean()
+  def rollup_block_exists?(block_number) do
+    query =
+      from(
+        block in FullBlock,
+        where: block.number == ^block_number and block.consensus == true
+      )
+
+    Repo.exists?(query, timeout: :infinity)
+  end
+
+  @doc """
+    Retrieves full details of rollup blocks, including associated transactions, for each
+    block number specified in the input list.
+
+    ## Parameters
+    - `list_of_block_numbers`: A list of block numbers for which full block details are to be retrieved.
+
+    ## Returns
+    - A list of `Explorer.Chain.Block` instances containing detailed information for each
+      block number in the input list. Returns an empty list if no blocks are found for the given numbers.
+  """
+  @spec rollup_blocks([FullBlock.block_number()]) :: [FullBlock.t()]
+  def rollup_blocks(list_of_block_numbers)
+
+  def rollup_blocks([]), do: []
+
+  def rollup_blocks(list_of_block_numbers) do
+    query =
+      from(
+        block in FullBlock,
+        where: block.number in ^list_of_block_numbers
+      )
+
+    query
+    # :optional is used since a block may not have any transactions
+    |> Chain.join_associations(%{:transactions => :optional})
+    |> Repo.all()
   end
 end
