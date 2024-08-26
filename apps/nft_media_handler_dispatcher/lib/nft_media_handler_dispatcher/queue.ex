@@ -5,25 +5,30 @@ defmodule NFTMediaHandlerDispatcher.Queue do
 
   use GenServer
 
+  require Logger
   alias Explorer.Chain.Token.Instance
   alias Explorer.Prometheus.Instrumenter
   alias Explorer.Token.MetadataRetriever
+  alias NftMediaHandlerDispatcher.Backfiller
+  import NFTMediaHandlerDispatcher, only: [get_media_url_from_metadata: 1]
 
-  def process_new_instance({:ok, %Instance{} = nft}) do
-    url = get_media_url_from_metadata(nft.metadata)
+  @indexer_priority 0
+  @backfill_priority 1
+
+  @spec process_new_instance(any(), integer()) :: :ignore | :ok
+  def process_new_instance(nft, priority \\ @indexer_priority)
+
+  def process_new_instance({:ok, %Instance{} = nft}, priority) do
+    url = get_media_url_from_metadata(nft.metadata |> dbg()) |> dbg()
 
     if url do
-      GenServer.cast(__MODULE__, {:add_to_queue, {nft.token_contract_address_hash, nft.token_id, url}})
+      GenServer.cast(__MODULE__, {:add_to_queue, {nft.token_contract_address_hash, nft.token_id, url, priority}})
     else
       :ignore
     end
   end
 
-  def process_new_instance(_), do: :ignore
-
-  def add_media_to_fetch({_token_address_hash, _token_id, _media_url} = data_to_fetch) do
-    GenServer.cast(__MODULE__, {:add_to_queue, data_to_fetch})
-  end
+  def process_new_instance(_, _priority), do: :ignore
 
   def get_urls_to_fetch(amount) do
     GenServer.call(__MODULE__, {:get_urls_to_fetch, amount})
@@ -36,9 +41,7 @@ defmodule NFTMediaHandlerDispatcher.Queue do
   def store_result({:down, reason}, url) do
     dbg("down_reason")
     dbg()
-    # somehow handle
     GenServer.cast(__MODULE__, {:handle_error, url, reason})
-    :ok
   end
 
   def store_result({result, media_type}, url) do
@@ -56,122 +59,113 @@ defmodule NFTMediaHandlerDispatcher.Queue do
     {:ok, queue} = :dets.open_file(:queue_storage, type: :bag)
     {:ok, in_progress} = :dets.open_file(:tasks_in_progress, type: :set)
 
-    {:ok, {queue, in_progress, MapSet.new()}, {:continue, []}}
+    {:ok, {queue, in_progress, nil}}
   end
 
-  def handle_continue(_, {queue, in_progress, in_memory_queue}) do
-    {:noreply, {queue, in_progress, fill_in_memory_queue(queue, in_memory_queue)}}
+  def handle_cast(
+        {:add_to_queue, {token_address_hash, token_id, media_url, priority}},
+        {queue, in_progress, continuation}
+      ) do
+    :dets.insert(queue, {media_url, {token_address_hash, token_id, priority}})
+
+    {:noreply, {queue, in_progress, continuation}}
   end
 
-  def handle_cast({:add_to_queue, {token_address_hash, token_id, media_url}}, {queue, in_progress, in_memory_queue}) do
-    in_memory_queue =
-      if MapSet.size(in_memory_queue) < in_memory_queue_limit() do
-        MapSet.put(in_memory_queue, media_url)
-      else
-        in_memory_queue
-      end
-
-    :dets.insert(queue, {media_url, {token_address_hash, token_id}})
-
-    {:noreply, {queue, in_progress, in_memory_queue}}
-  end
-
-  def handle_cast({:finished, result, url, media_type}, {queue, in_progress, _in_memory_queue} = state)
+  def handle_cast({:finished, result, url, media_type}, {_queue, in_progress, _continuation} = state)
       when is_map(result) do
     now = System.monotonic_time()
 
-    instances = :dets.lookup(queue, url)
-    [{_, start_time}] = :dets.lookup(in_progress, url)
+    [{_, instances, start_time}] = :dets.lookup(in_progress, url)
 
-    :dets.delete(queue, url)
     :dets.delete(in_progress, url)
 
     Instrumenter.increment_successfully_uploaded_media_number()
     Instrumenter.media_processing_time(System.convert_time_unit(now - start_time, :native, :millisecond) / 1000)
 
-    Enum.map(instances, fn {_, instance_identifier} ->
+    Enum.map(instances, fn instance_identifier ->
       Instance.set_media_urls(instance_identifier, result, media_type)
     end)
 
     {:noreply, state}
   end
 
-  def handle_cast({:handle_error, url, reason}, {queue, in_progress, _in_memory_queue} = state) do
-    instances = :dets.lookup(queue, url)
+  def handle_cast({:handle_error, url, reason}, {_queue, in_progress, _continuation} = state) do
+    [{_, instances, _start_time}] = :dets.lookup(in_progress, url)
 
-    :dets.delete(queue, url)
     :dets.delete(in_progress, url)
 
     Instrumenter.increment_failed_uploading_media_number()
 
-    Enum.map(instances, fn {_, instance_identifier} ->
+    Enum.map(instances, fn instance_identifier ->
       Instance.set_cdn_upload_error(instance_identifier, reason |> inspect() |> MetadataRetriever.truncate_error())
     end)
 
     {:noreply, state}
   end
 
-  def handle_call({:get_by_url, url}, _from, {queue, in_progress, in_memory_queue}) do
-    {:reply, :dets.lookup(queue, url), {queue, in_progress, in_memory_queue}}
+  def handle_call({:get_by_url, url}, _from, {queue, _in_progress, _continuation} = state) do
+    {:reply, :dets.lookup(queue, url), state}
   end
 
-  # todo:
-  # - what if in_memory_queue less than amount
-  # - to fill queue after getting urls
-  # - mb go inplace to dets and take all the urls from it, and then from the list take some to return, others put to in_mem_que
-  def handle_call({:get_urls_to_fetch, amount}, _from, {queue, in_progress, in_memory_queue}) do
-    urls = in_memory_queue |> MapSet.to_list() |> Enum.take(amount)
-    # DateTime.utc_now()
+  def handle_call({:get_urls_to_fetch, amount}, _from, {queue, in_progress, continuation}) do
+    {high_priority_urls, continuation} = fetch_urls_from_dets(queue, amount, continuation, @indexer_priority)
     now = System.monotonic_time()
-    :dets.insert(in_progress, urls |> Enum.map(&{&1, now}))
-    {:reply, urls, {queue, in_progress, MapSet.difference(in_memory_queue, MapSet.new(urls))}}
+
+    high_priority_instances = fetch_and_delete_instances_from_queue(queue, high_priority_urls, now)
+
+    taken_amount = Enum.count(high_priority_urls)
+
+    {urls, instances} =
+      if taken_amount < amount do
+        backfill_items = Backfiller.get_instances(amount - taken_amount)
+
+        {low_priority_instances, low_priority_urls} =
+          Enum.map_reduce(backfill_items, [], fn {url, instances}, acc ->
+            {{url, instances, now}, [url | acc]}
+          end)
+
+        {high_priority_urls ++ low_priority_urls, high_priority_instances ++ low_priority_instances}
+      end
+
+    :dets.insert(in_progress, instances)
+    {:reply, urls, {queue, in_progress, continuation}}
   end
 
-  # todo: think about avoidance of fetching all the urls from DETS
-  defp fill_in_memory_queue(queue_table, in_memory_queue) do
-    to_collect = in_memory_queue_limit() - MapSet.size(in_memory_queue)
+  defp fetch_urls_from_dets(queue_table, amount, continuation, priority) do
+    query = {:"$1", {:_, :_, priority}}
 
-    if to_collect > 0 do
-      urls =
-        queue_table
-        |> :dets.traverse(fn {url, {_token_address_hash, _token_id}} ->
-          if MapSet.member?(in_memory_queue, url) do
-            :continue
-          else
-            {:continue, url}
-          end
-        end)
-        |> Enum.take(to_collect)
+    result =
+      if is_nil(continuation) do
+        :dets.match(queue_table, query, amount)
+      else
+        :dets.match(continuation)
+      end
 
-      MapSet.union(in_memory_queue, MapSet.new(urls))
-    else
-      in_memory_queue
+    case result do
+      {:error, reason} ->
+        Logger.error("Failed to fetch urls from dets: #{inspect(reason)}")
+        {[], nil}
+
+      :"$end_of_table" ->
+        {[], nil}
+
+      {urls, :"$end_of_table"} ->
+        {urls |> List.flatten() |> Enum.uniq(), nil}
+
+      {urls, continuation} ->
+        {urls |> List.flatten() |> Enum.uniq(), continuation}
     end
   end
 
-  defp in_memory_queue_limit, do: Application.get_env(:nft_media_handler, :in_memory_queue_limit)
+  defp fetch_and_delete_instances_from_queue(queue, urls, start_time) do
+    Enum.map(urls, fn url ->
+      instances =
+        :dets.lookup(queue, url)
+        |> Enum.map(fn {_url, {address_hash, token_id, _priority}} -> {address_hash, token_id} end)
 
-  def get_media_url_from_metadata(metadata) when is_map(metadata) do
-    result =
-      cond do
-        metadata["image_url"] ->
-          metadata["image_url"]
+      :dets.delete(queue, url)
 
-        metadata["image"] ->
-          metadata["image"]
-
-        is_binary(metadata["properties"]["image"]) ->
-          metadata["properties"]["image"]
-
-        metadata["animation_url"] ->
-          metadata["animation_url"]
-
-        true ->
-          nil
-      end
-
-    if result && String.trim(result) == "", do: nil, else: result
+      {url, instances, start_time}
+    end)
   end
-
-  def get_media_url_from_metadata(nil), do: nil
 end

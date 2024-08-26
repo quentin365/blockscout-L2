@@ -8,10 +8,6 @@ defmodule NFTMediaHandler.Dispatcher do
     GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
   end
 
-  def add_media_to_fetch({_token_address_hash, _token_id, _media_url} = data_to_fetch) do
-    GenServer.cast(__MODULE__, {:add_to_queue, data_to_fetch})
-  end
-
   def init(_) do
     Process.send(self(), :spawn_tasks, [])
 

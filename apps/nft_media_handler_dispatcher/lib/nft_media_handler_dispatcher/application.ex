@@ -8,7 +8,8 @@ defmodule NFTMediaHandlerDispatcher.Application do
       Supervisor.child_spec({Task.Supervisor, name: NFTMediaHandlerDispatcher.TaskSupervisor},
         id: NFTMediaHandlerDispatcher.TaskSupervisor
       ),
-      NFTMediaHandlerDispatcher.Queue
+      NFTMediaHandlerDispatcher.Queue,
+      NftMediaHandlerDispatcher.Backfiller
     ]
 
     opts = [strategy: :one_for_one, name: NFTMediaHandlerDispatcher.Supervisor, max_restarts: 1_000]

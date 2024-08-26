@@ -1064,9 +1064,9 @@ config :nft_media_handler,
   remote?: ConfigHelper.parse_bool_env_var("NFT_MEDIA_HANDLER_REMOTE_DISPATCHER_NODE_MODE_ENABLED"),
   # :"models@ip-192-168-1-150"
   dispatcher_node: System.get_env("NFT_MEDIA_HANDLER_REMOTE_DISPATCHER_NODE"),
-  in_memory_queue_limit: ConfigHelper.parse_integer_env_var("NFT_MEDIA_HANDLER_IN_MEMORY_QUEUE_SIZE", 5_000),
   enabled?: ConfigHelper.parse_bool_env_var("NFT_MEDIA_HANDLER_ENABLED"),
-  worker?: ConfigHelper.parse_bool_env_var("NFT_MEDIA_HANDLER_IS_WORKER")
+  worker?: ConfigHelper.parse_bool_env_var("NFT_MEDIA_HANDLER_IS_WORKER"),
+  backfill_queue_size: ConfigHelper.parse_integer_env_var("NFT_MEDIA_HANDLER_BACKFILL_QUEUE_SIZE", 1000)
 
 Code.require_file("#{config_env()}.exs", "config/runtime")
 

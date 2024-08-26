@@ -670,7 +670,7 @@ defmodule Explorer.Chain.Token.Instance do
 
   def stream_instances_to_resize_and_upload(each_fun) do
     __MODULE__
-    |> where([ti], is_nil(ti.media_urls) and is_nil(ti.cdn_upload_error))
+    |> where([ti], not is_nil(ti.metadata) and is_nil(ti.media_urls) and is_nil(ti.cdn_upload_error))
     |> Repo.stream_each(each_fun)
   end
 end
