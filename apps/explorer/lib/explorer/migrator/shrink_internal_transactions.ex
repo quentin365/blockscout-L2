@@ -6,6 +6,8 @@ defmodule Explorer.Migrator.ShrinkInternalTransactions do
 
   use Explorer.Migrator.FillingMigration
 
+  require Logger
+
   import Ecto.Query
 
   alias Explorer.Chain.{Block, InternalTransaction}
@@ -24,10 +26,14 @@ defmodule Explorer.Migrator.ShrinkInternalTransactions do
     limit = batch_size() * concurrency()
     to_block_number = max(from_block_number - limit + 1, 0)
 
+    Logger.info("ShrinkInternalTransactions new batch defined: #{inspect(from_block_number..to_block_number)}")
+
     {Enum.to_list(from_block_number..to_block_number), %{state | max_block_number: to_block_number - 1}}
   end
 
   def last_unprocessed_identifiers(state) do
+    Logger.info("ShrinkInternalTransactions initial block number search started")
+
     query =
       from(
         it in InternalTransaction,
@@ -36,6 +42,8 @@ defmodule Explorer.Migrator.ShrinkInternalTransactions do
       )
 
     max_block_number = Repo.one(query, timeout: :infinity)
+
+    Logger.info("ShrinkInternalTransactions initial block number found: #{inspect(max_block_number)}")
 
     state
     |> Map.put(:max_block_number, max_block_number || -1)
