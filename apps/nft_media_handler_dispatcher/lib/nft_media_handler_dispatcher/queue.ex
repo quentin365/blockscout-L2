@@ -73,7 +73,7 @@ defmodule NFTMediaHandlerDispatcher.Queue do
     Instrumenter.increment_successfully_uploaded_media_number()
     Instrumenter.media_processing_time(System.convert_time_unit(now - start_time, :native, :millisecond) / 1000)
 
-    Enum.map(instances, fn instance_identifier ->
+    Enum.each(instances, fn instance_identifier ->
       Instance.set_media_urls(instance_identifier, result, media_type)
     end)
 
@@ -87,7 +87,7 @@ defmodule NFTMediaHandlerDispatcher.Queue do
 
     Instrumenter.increment_failed_uploading_media_number()
 
-    Enum.map(instances, fn instance_identifier ->
+    Enum.each(instances, fn instance_identifier ->
       Instance.set_cdn_upload_error(instance_identifier, reason |> inspect() |> MetadataRetriever.truncate_error())
     end)
 
@@ -151,7 +151,8 @@ defmodule NFTMediaHandlerDispatcher.Queue do
   defp fetch_and_delete_instances_from_queue(queue, urls, start_time) do
     Enum.map(urls, fn url ->
       instances =
-        :dets.lookup(queue, url)
+        queue
+        |> :dets.lookup(url)
         |> Enum.map(fn {_url, {_address_hash, _token_id} = instance} -> instance end)
 
       :dets.delete(queue, url)

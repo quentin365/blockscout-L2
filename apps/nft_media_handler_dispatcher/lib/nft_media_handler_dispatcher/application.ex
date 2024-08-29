@@ -1,13 +1,12 @@
 defmodule NFTMediaHandlerDispatcher.Application do
+  @moduledoc """
+  This is the `Application` module for `NFTMediaHandlerDispatcher`.
+  """
   use Application
 
   @impl Application
   def start(_type, _args) do
     children = [
-      # for backfiller
-      # Supervisor.child_spec({Task.Supervisor, name: NFTMediaHandlerDispatcher.TaskSupervisor},
-      #   id: NFTMediaHandlerDispatcher.TaskSupervisor
-      # ),
       NFTMediaHandlerDispatcher.Queue,
       NFTMediaHandlerDispatcher.Backfiller
     ]

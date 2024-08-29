@@ -1,4 +1,8 @@
 defmodule NFTMediaHandlerDispatcher.Backfiller do
+  @moduledoc """
+  Module fetches from DB token instances which wasn't processed via NFTMediaHandler yet. Then put it to the queue.
+  Via get_instances/1 it's possible to get urls to fetch.
+  """
   alias Explorer.Chain.Token.Instance
 
   import NFTMediaHandlerDispatcher, only: [get_media_url_from_metadata: 1]
@@ -65,7 +69,7 @@ defmodule NFTMediaHandlerDispatcher.Backfiller do
     {:noreply, %{state | stream_is_over?: true}}
   end
 
-  defp max_queue_size() do
+  defp max_queue_size do
     Application.get_env(:nft_media_handler, :backfill_queue_size)
   end
 end

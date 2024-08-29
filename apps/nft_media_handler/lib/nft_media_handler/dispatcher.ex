@@ -1,4 +1,8 @@
 defmodule NFTMediaHandler.Dispatcher do
+  @moduledoc """
+  Module responsible for spawning tasks for uploading image
+  and handling responses from that tasks
+  """
   use GenServer
 
   alias Task.Supervisor, as: TaskSupervisor
@@ -8,6 +12,7 @@ defmodule NFTMediaHandler.Dispatcher do
     GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
   end
 
+  @impl true
   def init(_) do
     Process.send(self(), :spawn_tasks, [])
 
@@ -20,6 +25,7 @@ defmodule NFTMediaHandler.Dispatcher do
      }}
   end
 
+  @impl true
   def handle_info(
         :spawn_tasks,
         %{max_concurrency: max_concurrency, current_concurrency: current_concurrency, ref_to_batch: tasks_map} = state
@@ -47,11 +53,13 @@ defmodule NFTMediaHandler.Dispatcher do
      }}
   end
 
+  @impl true
   def handle_info(:spawn_tasks, state) do
     Process.send_after(self(), :spawn_tasks, timeout())
     {:noreply, state}
   end
 
+  @impl true
   def handle_info({ref, _result}, %{current_concurrency: current_concurrency, ref_to_batch: tasks_map} = state) do
     Process.demonitor(ref, [:flush])
     Process.send(self(), :spawn_tasks, [])
@@ -60,6 +68,7 @@ defmodule NFTMediaHandler.Dispatcher do
   end
 
   # shouldn't happen
+  @impl true
   def handle_info(
         {:DOWN, ref, :process, _pid, reason},
         %{current_concurrency: current_concurrency, ref_to_batch: tasks_map} = state
@@ -68,7 +77,7 @@ defmodule NFTMediaHandler.Dispatcher do
 
     Logger.error("Failed to fetch and upload urls (#{inspect(urls)}): #{reason}")
 
-    Enum.map(urls, fn url -> NFTMediaHandlerDispatcherInterface.store_result({:down, reason}, url, node) end)
+    Enum.each(urls, fn url -> NFTMediaHandlerDispatcherInterface.store_result({:down, reason}, url, node) end)
 
     Process.send(self(), :spawn_tasks, [])
 
@@ -93,5 +102,5 @@ defmodule NFTMediaHandler.Dispatcher do
 
   defp batch_size, do: 1
 
-  def timeout, do: Application.get_env(:nft_media_handler, :worker_spawn_tasks_timeout)
+  defp timeout, do: Application.get_env(:nft_media_handler, :worker_spawn_tasks_timeout)
 end

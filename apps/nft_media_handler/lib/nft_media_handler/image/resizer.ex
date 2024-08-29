@@ -9,7 +9,8 @@ defmodule NFTMediaHandler.Image.Resizer do
   def resize(image, url, extension) do
     max_size = max(Image.width(image), Image.height(image) / Image.pages(image))
 
-    Enum.map(@sizes, fn {int_size, size} ->
+    @sizes
+    |> Enum.map(fn {int_size, size} ->
       new_file_name = generate_file_name(url, extension, size)
 
       with {:size, true} <- {:size, max_size > int_size},

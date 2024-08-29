@@ -6,8 +6,8 @@ defmodule NFTMediaHandler do
   require Logger
 
   alias Image.Video
-  alias NFTMediaHandler.Media.Fetcher
   alias NFTMediaHandler.Image.Resizer
+  alias NFTMediaHandler.Media.Fetcher
   alias NFTMediaHandler.R2.Uploader
   alias Vix.Vips.Image, as: VipsImage
 
@@ -26,60 +26,61 @@ defmodule NFTMediaHandler do
   end
 
   def prepare_and_upload_inner({"image", _} = media_type, initial_image_binary, url, r2_folder) do
-    with {:image, {:ok, image}} <- {:image, Image.from_binary(initial_image_binary, pages: -1)} do
-      extension = media_type_to_extension(media_type)
+    case {:image, Image.from_binary(initial_image_binary, pages: -1)} do
+      {:image, {:ok, image}} ->
+        extension = media_type_to_extension(media_type)
 
-      thumbnails = Resizer.resize(image, url, ".#{extension}")
+        thumbnails = Resizer.resize(image, url, ".#{extension}")
 
-      uploaded_thumbnails =
-        Enum.map(thumbnails, fn {size, image, file_name} ->
-          with {:ok, _result, uploaded_file_url} <- Uploader.upload_image(image, file_name, r2_folder) do
-            {size, uploaded_file_url}
-          else
-            _ ->
-              nil
-          end
-        end)
-        |> Enum.reject(&is_nil/1)
-        |> Enum.into(%{})
+        uploaded_thumbnails =
+          thumbnails
+          |> Enum.map(fn {size, image, file_name} ->
+            # credo:disable-for-next-line
+            case Uploader.upload_image(image, file_name, r2_folder) do
+              {:ok, _result, uploaded_file_url} ->
+                {size, uploaded_file_url}
 
-      uploaded_original_url =
-        with {:ok, _result, uploaded_file_url} <-
-               Uploader.upload_image(
+              _ ->
+                nil
+            end
+          end)
+          |> Enum.reject(&is_nil/1)
+          |> Enum.into(%{})
+
+        uploaded_original_url =
+          case Uploader.upload_image(
                  initial_image_binary,
                  Resizer.generate_file_name(url, ".#{extension}", "original"),
                  r2_folder
                ) do
-          uploaded_file_url
-        else
-          _ ->
-            nil
-        end
+            {:ok, _result, uploaded_file_url} ->
+              uploaded_file_url
 
-      max_size_or_original =
-        uploaded_original_url ||
-          (
-            {_, url} =
-              Enum.max_by(uploaded_thumbnails, fn {size, _} ->
-                {int_size, _} = Integer.parse(size)
-                int_size
-              end)
-
-            url
-          )
-
-      result =
-        Enum.reduce(Resizer.sizes(), uploaded_thumbnails, fn {_, size}, acc ->
-          if Map.has_key?(acc, size) do
-            acc
-          else
-            Map.put(acc, size, max_size_or_original)
+            _ ->
+              nil
           end
-        end)
-        |> Map.put("original", uploaded_original_url)
 
-      {result, media_type}
-    else
+        max_size_or_original =
+          uploaded_original_url ||
+            (
+              {_, url} =
+                Enum.max_by(uploaded_thumbnails, fn {size, _} ->
+                  {int_size, _} = Integer.parse(size)
+                  int_size
+                end)
+
+              url
+            )
+
+        result =
+          Resizer.sizes()
+          |> Enum.reduce(uploaded_thumbnails, fn {_, size}, acc ->
+            Map.put_new(acc, size, max_size_or_original)
+          end)
+          |> Map.put("original", uploaded_original_url)
+
+        {result, media_type}
+
       {:image, {:error, reason}} ->
         Logger.warning("Error on open image from url (#{url}): #{inspect(reason)}")
         :error
@@ -100,10 +101,12 @@ defmodule NFTMediaHandler do
       thumbnails = Resizer.resize(image, url, ".jpg")
 
       result =
-        Enum.map(thumbnails, fn {size, image, file_name} ->
-          with {:ok, _result, uploaded_file_url} <- Uploader.upload_image(image, file_name, r2_folder) do
-            {size, uploaded_file_url}
-          else
+        thumbnails
+        |> Enum.map(fn {size, image, file_name} ->
+          case Uploader.upload_image(image, file_name, r2_folder) do
+            {:ok, _result, uploaded_file_url} ->
+              {size, uploaded_file_url}
+
             _ ->
               nil
           end
@@ -143,9 +146,10 @@ defmodule NFTMediaHandler do
   end
 
   defp remove_file(path) do
-    with :ok <- File.rm(path) do
-      :ok
-    else
+    case File.rm(path) do
+      :ok ->
+        :ok
+
       {:error, reason} ->
         Logger.error("Unable to delete file, reason: #{inspect(reason)}, path: #{path}")
         :error

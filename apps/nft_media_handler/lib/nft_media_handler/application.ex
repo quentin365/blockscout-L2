@@ -1,4 +1,7 @@
 defmodule NFTMediaHandler.Application do
+  @moduledoc """
+  This is the `Application` module for `NFTMediaHandler`.
+  """
   use Application
 
   @impl Application
