@@ -10,18 +10,19 @@ defmodule BlockScoutWeb.Application do
   alias BlockScoutWeb.Prometheus.PublicExporter, as: PrometheusPublicExporter
 
   def start(_type, _args) do
-    # if Application.get_env(:nft_media_handler, :worker?) && Application.get_env(:nft_media_handler, :enabled?) && Application.get_env(:nft_media_handler, :remote?) do
-    # if false do
-    base_children = [Supervisor.child_spec(Endpoint, [])]
-    api_children = setup_and_define_children()
-    all_children = base_children ++ api_children
     opts = [strategy: :one_for_one, name: BlockScoutWeb.Supervisor, max_restarts: 1_000]
-    PrometheusExporter.setup()
-    PrometheusPublicExporter.setup()
-    Supervisor.start_link(all_children, opts)
-    # else
-    #   {:error, "nft_media_handler disabled"}
-    # end
+
+    if Application.get_env(:nft_media_handler, :standalone_media_worker?) do
+      Supervisor.start_link([], opts)
+    else
+      base_children = [Supervisor.child_spec(Endpoint, [])]
+      api_children = setup_and_define_children()
+      all_children = base_children ++ api_children
+
+      PrometheusExporter.setup()
+      PrometheusPublicExporter.setup()
+      Supervisor.start_link(all_children, opts)
+    end
   end
 
   # Tell Phoenix to update the endpoint configuration

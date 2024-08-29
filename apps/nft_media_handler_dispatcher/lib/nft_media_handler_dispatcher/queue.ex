@@ -9,26 +9,21 @@ defmodule NFTMediaHandlerDispatcher.Queue do
   alias Explorer.Chain.Token.Instance
   alias Explorer.Prometheus.Instrumenter
   alias Explorer.Token.MetadataRetriever
-  alias NftMediaHandlerDispatcher.Backfiller
+  alias NFTMediaHandlerDispatcher.Backfiller
   import NFTMediaHandlerDispatcher, only: [get_media_url_from_metadata: 1]
 
-  @indexer_priority 0
-  @backfill_priority 1
-
-  @spec process_new_instance(any(), integer()) :: :ignore | :ok
-  def process_new_instance(nft, priority \\ @indexer_priority)
-
-  def process_new_instance({:ok, %Instance{} = nft}, priority) do
-    url = get_media_url_from_metadata(nft.metadata |> dbg()) |> dbg()
+  @spec process_new_instance(any()) :: :ignore | :ok
+  def process_new_instance({:ok, %Instance{} = nft}) do
+    url = get_media_url_from_metadata(nft.metadata)
 
     if url do
-      GenServer.cast(__MODULE__, {:add_to_queue, {nft.token_contract_address_hash, nft.token_id, url, priority}})
+      GenServer.cast(__MODULE__, {:add_to_queue, {nft.token_contract_address_hash, nft.token_id, url}})
     else
       :ignore
     end
   end
 
-  def process_new_instance(_, _priority), do: :ignore
+  def process_new_instance(_), do: :ignore
 
   def get_urls_to_fetch(amount) do
     GenServer.call(__MODULE__, {:get_urls_to_fetch, amount})
@@ -39,14 +34,10 @@ defmodule NFTMediaHandlerDispatcher.Queue do
   end
 
   def store_result({:down, reason}, url) do
-    dbg("down_reason")
-    dbg()
     GenServer.cast(__MODULE__, {:handle_error, url, reason})
   end
 
   def store_result({result, media_type}, url) do
-    dbg("store result")
-    dbg()
     GenServer.cast(__MODULE__, {:finished, result, url, media_type})
   end
 
@@ -63,10 +54,10 @@ defmodule NFTMediaHandlerDispatcher.Queue do
   end
 
   def handle_cast(
-        {:add_to_queue, {token_address_hash, token_id, media_url, priority}},
+        {:add_to_queue, {token_address_hash, token_id, media_url}},
         {queue, in_progress, continuation}
       ) do
-    :dets.insert(queue, {media_url, {token_address_hash, token_id, priority}})
+    :dets.insert(queue, {media_url, {token_address_hash, token_id}})
 
     {:noreply, {queue, in_progress, continuation}}
   end
@@ -108,7 +99,7 @@ defmodule NFTMediaHandlerDispatcher.Queue do
   end
 
   def handle_call({:get_urls_to_fetch, amount}, _from, {queue, in_progress, continuation}) do
-    {high_priority_urls, continuation} = fetch_urls_from_dets(queue, amount, continuation, @indexer_priority)
+    {high_priority_urls, continuation} = fetch_urls_from_dets(queue, amount, continuation)
     now = System.monotonic_time()
 
     high_priority_instances = fetch_and_delete_instances_from_queue(queue, high_priority_urls, now)
@@ -131,8 +122,8 @@ defmodule NFTMediaHandlerDispatcher.Queue do
     {:reply, urls, {queue, in_progress, continuation}}
   end
 
-  defp fetch_urls_from_dets(queue_table, amount, continuation, priority) do
-    query = {:"$1", {:_, :_, priority}}
+  defp fetch_urls_from_dets(queue_table, amount, continuation) do
+    query = {:"$1", :_}
 
     result =
       if is_nil(continuation) do
@@ -161,7 +152,7 @@ defmodule NFTMediaHandlerDispatcher.Queue do
     Enum.map(urls, fn url ->
       instances =
         :dets.lookup(queue, url)
-        |> Enum.map(fn {_url, {address_hash, token_id, _priority}} -> {address_hash, token_id} end)
+        |> Enum.map(fn {_url, {_address_hash, _token_id} = instance} -> instance end)
 
       :dets.delete(queue, url)
 

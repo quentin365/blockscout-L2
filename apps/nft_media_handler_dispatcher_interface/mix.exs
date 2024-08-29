@@ -1,4 +1,4 @@
-defmodule NftMediaHandlerDispatcherInterface.MixProject do
+defmodule NFTMediaHandlerDispatcherInterface.MixProject do
   use Mix.Project
 
   def project do
@@ -18,6 +18,7 @@ defmodule NftMediaHandlerDispatcherInterface.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
+      mod: {NFTMediaHandlerDispatcherInterface.Application, []},
       extra_applications: [:logger]
     ]
   end

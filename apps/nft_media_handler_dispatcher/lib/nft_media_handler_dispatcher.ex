@@ -1,6 +1,6 @@
 defmodule NFTMediaHandlerDispatcher do
   @moduledoc """
-  Documentation for `NftMediaHandlerDispatcher`.
+  Documentation for `NFTMediaHandlerDispatcher`.
   """
 
   @spec get_media_url_from_metadata(nil | map()) :: nil | binary()

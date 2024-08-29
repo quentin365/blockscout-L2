@@ -17,14 +17,12 @@ defmodule NFTMediaHandler.Image.Resizer do
            {:ok, binary} <- NFTMediaHandler.image_to_binary(resized_image, new_file_name, extension) do
         {size, binary, new_file_name}
       else
-        error ->
-          error_message =
-            case error do
-              {:size, _} -> "Skipped #{size} resizing due to small image size"
-              error -> "Error while #{size} resizing: #{inspect(error)}"
-            end
+        {:size, _} ->
+          Logger.warning("Skipped #{size} resizing due to small image size")
+          nil
 
-          Logger.warning(error_message)
+        error ->
+          Logger.warning("Error while #{size} resizing: #{inspect(error)}")
           nil
       end
     end)

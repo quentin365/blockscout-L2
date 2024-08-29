@@ -11,10 +11,15 @@ defmodule NFTMediaHandler.Dispatcher do
   def init(_) do
     Process.send(self(), :spawn_tasks, [])
 
-    {:ok, %{max_concurrency: 10, current_concurrency: 0, batch_size: 1, waiting_timeout: 100, ref_to_batch: %{}}}
+    {:ok,
+     %{
+       max_concurrency: Application.get_env(:nft_media_handler, :worker_concurrency),
+       current_concurrency: 0,
+       batch_size: Application.get_env(:nft_media_handler, :worker_batch_size),
+       ref_to_batch: %{}
+     }}
   end
 
-  # todo: add spawn with timeout
   def handle_info(
         :spawn_tasks,
         %{max_concurrency: max_concurrency, current_concurrency: current_concurrency, ref_to_batch: tasks_map} = state
@@ -23,11 +28,14 @@ defmodule NFTMediaHandler.Dispatcher do
     to_spawn = max_concurrency - current_concurrency
     batch_size = batch_size()
 
-    spawned =
+    {urls, node, folder} =
       (batch_size * to_spawn)
       |> NFTMediaHandlerDispatcherInterface.get_urls()
+
+    spawned =
+      urls
       |> Enum.chunk_every(batch_size)
-      |> Enum.map(&run_task/1)
+      |> Enum.map(&run_task(&1, node, folder))
 
     Process.send_after(self(), :spawn_tasks, timeout())
 
@@ -51,28 +59,39 @@ defmodule NFTMediaHandler.Dispatcher do
     {:noreply, %{state | current_concurrency: current_concurrency - 1, ref_to_batch: Map.drop(tasks_map, [ref])}}
   end
 
+  # shouldn't happen
   def handle_info(
         {:DOWN, ref, :process, _pid, reason},
         %{current_concurrency: current_concurrency, ref_to_batch: tasks_map} = state
       ) do
-    {url, tasks_map_updated} = Map.pop(tasks_map, ref)
-    Logger.error("Failed to fetch and upload url (#{url}): #{reason}")
+    {{urls, node}, tasks_map_updated} = Map.pop(tasks_map, ref)
 
-    NFTMediaHandlerDispatcherInterface.store_result({:down, reason}, url)
+    Logger.error("Failed to fetch and upload urls (#{inspect(urls)}): #{reason}")
+
+    Enum.map(urls, fn url -> NFTMediaHandlerDispatcherInterface.store_result({:down, reason}, url, node) end)
+
     Process.send(self(), :spawn_tasks, [])
 
     {:noreply, %{state | current_concurrency: current_concurrency - 1, ref_to_batch: tasks_map_updated}}
   end
 
-  defp run_task(batch),
+  defp run_task(batch, node, folder),
     do:
       {TaskSupervisor.async_nolink(NFTMediaHandler.TaskSupervisor, fn ->
          Enum.map(batch, fn url ->
-           url |> NFTMediaHandler.prepare_and_upload_by_url() |> NFTMediaHandlerDispatcherInterface.store_result(url)
+           try do
+             url
+             |> NFTMediaHandler.prepare_and_upload_by_url(folder)
+             |> NFTMediaHandlerDispatcherInterface.store_result(url, node)
+           rescue
+             error ->
+               Logger.error("Failed to fetch and upload url (#{url}): #{inspect(error)}")
+               NFTMediaHandlerDispatcherInterface.store_result({:error, error}, url, node)
+           end
          end)
-       end).ref, batch}
+       end).ref, {batch, node}}
 
-  defp batch_size(), do: 1
+  defp batch_size, do: 1
 
-  def timeout, do: 100
+  def timeout, do: Application.get_env(:nft_media_handler, :worker_spawn_tasks_timeout)
 end

@@ -1,4 +1,4 @@
-# NftMediaHandlerDispatcher
+# NFTMediaHandlerDispatcher
 
 **TODO: Add description**
 

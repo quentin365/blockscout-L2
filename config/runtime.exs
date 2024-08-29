@@ -1059,14 +1059,22 @@ config :ex_aws, :s3,
   public_r2_url: ConfigHelper.parse_url_env_var("AWS_PUBLIC_BUCKET_URL", nil, false),
   bucket_name: System.get_env("AWS_BUCKET_NAME")
 
+nmh_enabled? = ConfigHelper.parse_bool_env_var("NFT_MEDIA_HANDLER_ENABLED")
+nmh_remote? = ConfigHelper.parse_bool_env_var("NFT_MEDIA_HANDLER_REMOTE_DISPATCHER_NODE_MODE_ENABLED")
+nmh_worker? = ConfigHelper.parse_bool_env_var("NFT_MEDIA_HANDLER_IS_WORKER")
+nodes_map = ConfigHelper.parse_json_with_atom_keys_env_var("NFT_MEDIA_HANDLER_NODES_MAP")
+
 config :nft_media_handler,
+  enabled?: nmh_enabled?,
   tmp_dir: ConfigHelper.parse_url_env_var("NFT_MEDIA_TMP_DIR", "./", true),
-  remote?: ConfigHelper.parse_bool_env_var("NFT_MEDIA_HANDLER_REMOTE_DISPATCHER_NODE_MODE_ENABLED"),
-  # :"models@ip-192-168-1-150"
-  dispatcher_node: System.get_env("NFT_MEDIA_HANDLER_REMOTE_DISPATCHER_NODE"),
-  enabled?: ConfigHelper.parse_bool_env_var("NFT_MEDIA_HANDLER_ENABLED"),
-  worker?: ConfigHelper.parse_bool_env_var("NFT_MEDIA_HANDLER_IS_WORKER"),
-  backfill_queue_size: ConfigHelper.parse_integer_env_var("NFT_MEDIA_HANDLER_BACKFILL_QUEUE_SIZE", 1000)
+  remote?: nmh_remote?,
+  worker?: nmh_worker?,
+  nodes_map: nodes_map,
+  backfill_queue_size: ConfigHelper.parse_integer_env_var("NFT_MEDIA_HANDLER_BACKFILL_QUEUE_SIZE", 1000),
+  standalone_media_worker?: nmh_enabled? && nmh_remote? && nmh_worker?,
+  worker_concurrency: ConfigHelper.parse_integer_env_var("NFT_MEDIA_HANDLER_WORKER_CONCURRENCY", 10),
+  worker_batch_size: ConfigHelper.parse_integer_env_var("NFT_MEDIA_HANDLER_WORKER_BATCH_SIZE", 10),
+  worker_spawn_tasks_timeout: ConfigHelper.parse_time_env_var("NFT_MEDIA_HANDLER_WORKER_SPAWN_TASKS_TIMEOUT", "100ms")
 
 Code.require_file("#{config_env()}.exs", "config/runtime")
 

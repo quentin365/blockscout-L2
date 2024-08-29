@@ -1,4 +1,4 @@
-defmodule NftMediaHandlerTest do
+defmodule NFTMediaHandlerTest do
   use ExUnit.Case
   doctest NFTMediaHandler
 

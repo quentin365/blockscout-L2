@@ -1,4 +1,4 @@
-defmodule NftMediaHandlerDispatcher.Backfiller do
+defmodule NFTMediaHandlerDispatcher.Backfiller do
   alias Explorer.Chain.Token.Instance
 
   import NFTMediaHandlerDispatcher, only: [get_media_url_from_metadata: 1]

@@ -283,6 +283,19 @@ defmodule ConfigHelper do
     err -> raise "Invalid JSON in environment variable #{env_var}: #{inspect(err)}"
   end
 
+  def parse_json_with_atom_keys_env_var(env_var, default_value \\ "{}") do
+    with {:ok, map} <-
+           env_var
+           |> safe_get_env(default_value)
+           |> Jason.decode() do
+      for {key, value} <- map, into: %{}, do: {String.to_atom(key), value}
+    else
+      {:error, error} -> raise "Invalid JSON in environment variable #{env_var}: #{inspect(error)}"
+    end
+  rescue
+    error -> raise "Invalid JSON in environment variable #{env_var}: #{inspect(error)}"
+  end
+
   @spec parse_list_env_var(String.t(), String.t() | nil) :: list()
   def parse_list_env_var(env_var, default_value \\ nil) do
     addresses_var = safe_get_env(env_var, default_value)

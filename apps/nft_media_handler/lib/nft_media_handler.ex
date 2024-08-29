@@ -13,11 +13,11 @@ defmodule NFTMediaHandler do
 
   @ipfs_protocol "ipfs://"
 
-  @spec prepare_and_upload_by_url(binary()) :: :error | {map(), {binary(), binary()}}
-  def prepare_and_upload_by_url(url) do
+  @spec prepare_and_upload_by_url(binary(), binary()) :: :error | {map(), {binary(), binary()}}
+  def prepare_and_upload_by_url(url, r2_folder) do
     with {prepared_url, headers} <- maybe_process_ipfs(url),
          {:ok, media_type, body} <- Fetcher.fetch_media(prepared_url, headers) do
-      prepare_and_upload_inner(media_type, body, url)
+      prepare_and_upload_inner(media_type, body, url, r2_folder)
     else
       {:error, reason} ->
         Logger.warning("Error on fetching media: #{inspect(reason)}, from url (#{url})")
@@ -25,7 +25,7 @@ defmodule NFTMediaHandler do
     end
   end
 
-  def prepare_and_upload_inner({"image", _} = media_type, initial_image_binary, url) do
+  def prepare_and_upload_inner({"image", _} = media_type, initial_image_binary, url, r2_folder) do
     with {:image, {:ok, image}} <- {:image, Image.from_binary(initial_image_binary, pages: -1)} do
       extension = media_type_to_extension(media_type)
 
@@ -33,7 +33,7 @@ defmodule NFTMediaHandler do
 
       uploaded_thumbnails =
         Enum.map(thumbnails, fn {size, image, file_name} ->
-          with {:ok, _result, uploaded_file_url} <- Uploader.upload_image(image, file_name) do
+          with {:ok, _result, uploaded_file_url} <- Uploader.upload_image(image, file_name, r2_folder) do
             {size, uploaded_file_url}
           else
             _ ->
@@ -45,7 +45,11 @@ defmodule NFTMediaHandler do
 
       uploaded_original_url =
         with {:ok, _result, uploaded_file_url} <-
-               Uploader.upload_image(initial_image_binary, Resizer.generate_file_name(url, ".#{extension}", "original")) do
+               Uploader.upload_image(
+                 initial_image_binary,
+                 Resizer.generate_file_name(url, ".#{extension}", "original"),
+                 r2_folder
+               ) do
           uploaded_file_url
         else
           _ ->
@@ -82,7 +86,7 @@ defmodule NFTMediaHandler do
     end
   end
 
-  def prepare_and_upload_inner({"video", _} = media_type, body, url) do
+  def prepare_and_upload_inner({"video", _} = media_type, body, url, r2_folder) do
     extension = media_type_to_extension(media_type)
     file_name = Resizer.generate_file_name(url, ".#{extension}", "original")
     path = "#{Application.get_env(:nft_media_handler, :tmp_dir)}#{file_name}"
@@ -97,7 +101,7 @@ defmodule NFTMediaHandler do
 
       result =
         Enum.map(thumbnails, fn {size, image, file_name} ->
-          with {:ok, _result, uploaded_file_url} <- Uploader.upload_image(image, file_name) do
+          with {:ok, _result, uploaded_file_url} <- Uploader.upload_image(image, file_name, r2_folder) do
             {size, uploaded_file_url}
           else
             _ ->

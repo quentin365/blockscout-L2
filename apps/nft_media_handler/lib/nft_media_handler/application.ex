@@ -10,6 +10,12 @@ defmodule NFTMediaHandler.Application do
 
     opts = [strategy: :one_for_one, name: NFTMediaHandler.Supervisor, max_restarts: 1_000]
 
-    Supervisor.start_link(children, opts)
+    if Application.get_env(:nft_media_handler, :enabled?) &&
+         (!Application.get_env(:nft_media_handler, :remote?) ||
+            (Application.get_env(:nft_media_handler, :remote?) && Application.get_env(:nft_media_handler, :worker?))) do
+      Supervisor.start_link(children, opts)
+    else
+      Supervisor.start_link([], opts)
+    end
   end
 end
