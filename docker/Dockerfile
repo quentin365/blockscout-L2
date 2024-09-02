@@ -4,7 +4,8 @@ WORKDIR /app
 
 ENV MIX_ENV="prod"
 
-RUN apk --no-cache --update add alpine-sdk gmp-dev automake libtool inotify-tools autoconf python3 file gcompat
+RUN apk --no-cache --update add alpine-sdk gmp-dev automake libtool inotify-tools autoconf python3 file gcompat elfutils-dev
+RUN apk add --repository=https://dl-cdn.alpinelinux.org/alpine/v3.16/main/ libexecinfo-dev
 
 RUN set -ex && \
     apk --update add libstdc++ curl ca-certificates gcompat
@@ -29,22 +30,19 @@ ARG MUD_INDEXER_ENABLED
 ENV MUD_INDEXER_ENABLED=${MUD_INDEXER_ENABLED}
 ARG SHRINK_INTERNAL_TRANSACTIONS_ENABLED
 ENV SHRINK_INTERNAL_TRANSACTIONS_ENABLED=${SHRINK_INTERNAL_TRANSACTIONS_ENABLED}
-
-# Cache elixir deps
-ADD mix.exs mix.lock ./
-ADD apps/block_scout_web/mix.exs ./apps/block_scout_web/
-ADD apps/explorer/mix.exs ./apps/explorer/
-ADD apps/ethereum_jsonrpc/mix.exs ./apps/ethereum_jsonrpc/
-ADD apps/indexer/mix.exs ./apps/indexer/
-
-ENV MIX_HOME=/opt/mix
-RUN mix local.hex --force
-RUN mix do deps.get, local.rebar --force, deps.compile
+ARG XLA_TARGET_PLATFORM="aarch64-linux-gnu"
+#ARG XLA_TARGET_PLATFORM="x86_64-linux-gnu"
+ENV XLA_TARGET_PLATFORM=${XLA_TARGET_PLATFORM}
 
 ADD apps ./apps
 ADD config ./config
 ADD rel ./rel
 ADD *.exs ./
+ADD mix.exs mix.lock ./
+
+ENV MIX_HOME=/opt/mix
+RUN mix local.hex --force
+RUN mix do deps.get, local.rebar --force, deps.compile
 
 RUN apk add --update nodejs npm
 
@@ -58,7 +56,7 @@ RUN cd apps/block_scout_web/assets/ && \
     cd /app/apps/explorer/ && \
     npm install && \
     apk update && \
-    apk del --force-broken-world alpine-sdk gmp-dev automake libtool inotify-tools autoconf python3
+    apk del --force-broken-world alpine-sdk gmp-dev automake libtool inotify-tools autoconf python3 elfutils-dev
 
 
 RUN apk add --update git make 
