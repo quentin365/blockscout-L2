@@ -12,6 +12,9 @@ defmodule NFTMediaHandlerDispatcher.Queue do
   alias NFTMediaHandlerDispatcher.Backfiller
   import NFTMediaHandlerDispatcher, only: [get_media_url_from_metadata: 1]
 
+  @queue_storage :queue_storage
+  @tasks_in_progress :tasks_in_progress
+
   @spec process_new_instance(any()) :: :ignore | :ok
   def process_new_instance({:ok, %Instance{} = nft}) do
     url = get_media_url_from_metadata(nft.metadata)
@@ -45,10 +48,11 @@ defmodule NFTMediaHandlerDispatcher.Queue do
     GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
   end
 
-  # todo: close dets if needed
   def init(_) do
-    {:ok, queue} = :dets.open_file(:queue_storage, type: :bag)
-    {:ok, in_progress} = :dets.open_file(:tasks_in_progress, type: :set)
+    {:ok, queue} = :dets.open_file(@queue_storage, type: :bag)
+    {:ok, in_progress} = :dets.open_file(@tasks_in_progress, type: :set)
+
+    Process.flag(:trap_exit, true)
 
     {:ok, {queue, in_progress, nil}}
   end
@@ -120,6 +124,15 @@ defmodule NFTMediaHandlerDispatcher.Queue do
 
     :dets.insert(in_progress, instances)
     {:reply, urls, {queue, in_progress, continuation}}
+  end
+
+  @doc """
+  Implementation of terminate callback.
+  Closes opened dets tables on application shutdown.
+  """
+  def terminate(_reason, {queue, in_progress, _continuation}) do
+    :dets.close(queue)
+    :dets.close(in_progress)
   end
 
   defp fetch_urls_from_dets(queue_table, amount, continuation) do
