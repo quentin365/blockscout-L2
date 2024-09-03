@@ -4,6 +4,7 @@ defmodule Explorer.Prometheus.Instrumenter do
   """
 
   use Prometheus.Metric
+  require Logger
 
   @histogram [
     name: :block_import_stage_runner_duration_microseconds,
