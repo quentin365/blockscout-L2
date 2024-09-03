@@ -48,8 +48,6 @@ defmodule NFTMediaHandlerDispatcherInterface do
       folder = Application.get_env(:nft_media_handler, :nodes_map)[:self]
       {apply(NFTMediaHandlerDispatcher.Queue, function, args), :self, folder}
     end
-
-    # remote_call([amount], :get_urls_to_fetch, Application.get_env(:nft_media_handler, :remote?))
   end
 
   def store_result(result, url, node) do

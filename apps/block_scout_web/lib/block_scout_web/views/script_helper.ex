@@ -4,8 +4,9 @@ defmodule BlockScoutWeb.Views.ScriptHelper do
   """
 
   import Phoenix.LiveView.Helpers, only: [sigil_H: 2]
-
   import BlockScoutWeb.Router.Helpers, only: [static_path: 2]
+
+  alias Phoenix.HTML.Safe
 
   def render_scripts(conn, file_names) do
     conn
@@ -16,7 +17,7 @@ defmodule BlockScoutWeb.Views.ScriptHelper do
       ~H"""
         <script src="{@file}"> </script>
       """
-      |> Phoenix.HTML.Safe.to_iodata()
+      |> Safe.to_iodata()
       |> List.to_string()
     end)
   end

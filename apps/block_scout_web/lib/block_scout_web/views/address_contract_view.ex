@@ -12,6 +12,7 @@ defmodule BlockScoutWeb.AddressContractView do
   alias Explorer.Chain.SmartContract
   alias Explorer.Chain.SmartContract.Proxy.EIP1167
   alias Explorer.SmartContract.Helper, as: SmartContractHelper
+  alias Phoenix.HTML.Safe
 
   def render("scripts.html", %{conn: conn}) do
     render_scripts(conn, "address_contract/code_highlighting.js")
@@ -48,7 +49,7 @@ defmodule BlockScoutWeb.AddressContractView do
          ~H"""
          {@acc} Arg [{@count}] (<b>{@type}</b>) : {@formatted_val}
          """
-         |> Phoenix.HTML.Safe.to_iodata()
+         |> Safe.to_iodata()
          |> List.to_string()}
       end)
 
@@ -98,7 +99,7 @@ defmodule BlockScoutWeb.AddressContractView do
       assigns = %{address: address, address_hash: address_hash, conn: conn}
 
       ~H"<a href={address_path(@conn, :show, @address)}>{@address_hash}</a>"
-      |> Phoenix.HTML.Safe.to_iodata()
+      |> Safe.to_iodata()
       |> List.to_string()
     else
       address_hash
@@ -113,7 +114,7 @@ defmodule BlockScoutWeb.AddressContractView do
       ~H"""
       {@acc}<span class="hljs-title">{@name}</span> : {get_formatted_address_data(@address, @address_hash, @conn)}
       """
-      |> Phoenix.HTML.Safe.to_iodata()
+      |> Safe.to_iodata()
       |> List.to_string()
     end)
   end

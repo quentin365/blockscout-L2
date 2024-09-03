@@ -11,6 +11,7 @@ defmodule BlockScoutWeb.ABIEncodedValueView do
 
   alias ABI.FunctionSelector
   alias Phoenix.HTML
+  alias Phoenix.HTML.Safe
 
   require Logger
 
@@ -72,7 +73,7 @@ defmodule BlockScoutWeb.ABIEncodedValueView do
     assigns = %{values: values}
 
     ~H|[{@values}]|
-    |> Phoenix.HTML.Safe.to_iodata()
+    |> Safe.to_iodata()
     |> List.to_string()
   end
 
@@ -95,7 +96,7 @@ defmodule BlockScoutWeb.ABIEncodedValueView do
     assigns = %{values: values}
 
     ~H|({@values})|
-    |> Phoenix.HTML.Safe.to_iodata()
+    |> Safe.to_iodata()
     |> List.to_string()
   end
 
@@ -125,7 +126,7 @@ defmodule BlockScoutWeb.ABIEncodedValueView do
     assigns = %{spacing: spacing, delimited: delimited}
 
     ~H|{@spacing}[<%= "\n" %>{@delimited}<%= "\n" %>{@spacing}]|
-    |> Phoenix.HTML.Safe.to_iodata()
+    |> Safe.to_iodata()
     |> List.to_string()
   end
 
@@ -142,7 +143,7 @@ defmodule BlockScoutWeb.ABIEncodedValueView do
     assigns = %{delimited: delimited}
 
     ~H|({@delimited})|
-    |> Phoenix.HTML.Safe.to_iodata()
+    |> Safe.to_iodata()
     |> List.to_string()
   end
 
@@ -155,7 +156,7 @@ defmodule BlockScoutWeb.ABIEncodedValueView do
     assigns = %{value: value}
 
     ~H|{hex(@value)}|
-    |> Phoenix.HTML.Safe.to_iodata()
+    |> Safe.to_iodata()
     |> List.to_string()
   end
 
@@ -168,7 +169,7 @@ defmodule BlockScoutWeb.ABIEncodedValueView do
       assigns = %{address: address}
 
       ~H|<a href="{address_path(BlockScoutWeb.Endpoint, :show, @address}}" target="_blank">{@address}</a>|
-      |> Phoenix.HTML.Safe.to_iodata()
+      |> Safe.to_iodata()
       |> List.to_string()
     end
   end
@@ -177,7 +178,7 @@ defmodule BlockScoutWeb.ABIEncodedValueView do
     assigns = %{value: value}
 
     ~H|{hex(@value)}|
-    |> Phoenix.HTML.Safe.to_iodata()
+    |> Safe.to_iodata()
     |> List.to_string()
   end
 
@@ -185,7 +186,7 @@ defmodule BlockScoutWeb.ABIEncodedValueView do
     assigns = %{value: value}
 
     ~H|{hex(@value)}|
-    |> Phoenix.HTML.Safe.to_iodata()
+    |> Safe.to_iodata()
     |> List.to_string()
   end
 
