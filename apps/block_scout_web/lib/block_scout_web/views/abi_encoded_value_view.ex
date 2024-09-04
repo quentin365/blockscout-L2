@@ -72,7 +72,7 @@ defmodule BlockScoutWeb.ABIEncodedValueView do
 
     assigns = %{values: values}
 
-    ~H|[{@values}]|
+    ~H|[<%= @values %>]|
     |> Safe.to_iodata()
     |> List.to_string()
   end
@@ -95,7 +95,7 @@ defmodule BlockScoutWeb.ABIEncodedValueView do
 
     assigns = %{values: values}
 
-    ~H|({@values})|
+    ~H|(<%= @values %>)|
     |> Safe.to_iodata()
     |> List.to_string()
   end
@@ -121,13 +121,25 @@ defmodule BlockScoutWeb.ABIEncodedValueView do
       end)
 
     spacing = String.duplicate(" ", depth * 2)
-    delimited = Enum.intersperse(values, ",\n")
+    delimited = Enum.intersperse(values, ",\n") |> dbg()
 
     assigns = %{spacing: spacing, delimited: delimited}
 
-    ~H|{@spacing}[<%= "\n" %>{@delimited}<%= "\n" %>{@spacing}]|
-    |> Safe.to_iodata()
-    |> List.to_string()
+    elements =
+      Enum.reduce(delimited, "", fn value, acc ->
+        assigns = %{value: value}
+
+        html = ~H|<%= raw(@value) %>| |> Safe.to_iodata() |> List.to_string()
+        acc <> html
+      end)
+
+    (~H|<%= @spacing %>[<%= "\n" %>|
+     |> Safe.to_iodata()
+     |> List.to_string()) <>
+      elements <>
+      (~H|<%= "\n" %><%= @spacing %>]|
+       |> Safe.to_iodata()
+       |> List.to_string())
   end
 
   defp do_value_html({:tuple, types}, values, no_links, _) do
@@ -142,52 +154,51 @@ defmodule BlockScoutWeb.ABIEncodedValueView do
     delimited = Enum.intersperse(values_list, ",")
     assigns = %{delimited: delimited}
 
-    ~H|({@delimited})|
+    ~H|(<%= for value <- @delimited, do: raw(value) %>)|
     |> Safe.to_iodata()
     |> List.to_string()
   end
 
   defp do_value_html(type, value, no_links, depth) do
     spacing = String.duplicate(" ", depth * 2)
-    [spacing, base_value_html(type, value, no_links)]
+    html = base_value_html(type, value, no_links)
+
+    assigns = %{html: html, spacing: spacing}
+
+    ~H|<%= @spacing %><%=@html%>|
+    |> Safe.to_iodata()
+    |> List.to_string()
   end
 
   defp base_value_html(_, {:dynamic, value}, _no_links) do
     assigns = %{value: value}
 
-    ~H|{hex(@value)}|
-    |> Safe.to_iodata()
-    |> List.to_string()
+    ~H|<%= hex(@value) %>|
   end
 
   defp base_value_html(:address, value, no_links) do
     if no_links do
       base_value_html(:address_text, value, no_links)
     else
-      address = hex(value)
+      address = hex(value) |> dbg()
+      path = address_path(BlockScoutWeb.Endpoint, :show, address) |> dbg()
 
-      assigns = %{address: address}
+      assigns = %{address: address, path: path}
 
-      ~H|<a href="{address_path(BlockScoutWeb.Endpoint, :show, @address}}" target="_blank">{@address}</a>|
-      |> Safe.to_iodata()
-      |> List.to_string()
+      ~H|<a href={@path} target="_blank"><%= @address %></a>|
     end
   end
 
   defp base_value_html(:address_text, value, _no_links) do
     assigns = %{value: value}
 
-    ~H|{hex(@value)}|
-    |> Safe.to_iodata()
-    |> List.to_string()
+    ~H|<%= hex(@value) %>|
   end
 
   defp base_value_html(:bytes, value, _no_links) do
     assigns = %{value: value}
 
-    ~H|{hex(@value)}|
-    |> Safe.to_iodata()
-    |> List.to_string()
+    ~H|<%= hex(@value) %>|
   end
 
   defp base_value_html(_, value, _no_links), do: HTML.html_escape(value)

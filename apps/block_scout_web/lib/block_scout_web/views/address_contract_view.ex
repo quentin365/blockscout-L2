@@ -47,7 +47,7 @@ defmodule BlockScoutWeb.AddressContractView do
 
         {count + 1,
          ~H"""
-         {@acc} Arg [{@count}] (<b>{@type}</b>) : {@formatted_val}
+         <%= @acc %> Arg [<%= @count %>] (<b><%= @type %></b>) : <%= @formatted_val %>
          """
          |> Safe.to_iodata()
          |> List.to_string()}
@@ -98,9 +98,12 @@ defmodule BlockScoutWeb.AddressContractView do
     if address != nil do
       assigns = %{address: address, address_hash: address_hash, conn: conn}
 
-      ~H"<a href={address_path(@conn, :show, @address)}>{@address_hash}</a>"
-      |> Safe.to_iodata()
-      |> List.to_string()
+      ~H"""
+      <a href="{#{address_path(@conn, :show, @address)}}"><%= @address_hash %></a>
+      """
+
+      # |> Safe.to_iodata()
+      # |> List.to_string()
     else
       address_hash
     end
@@ -112,7 +115,7 @@ defmodule BlockScoutWeb.AddressContractView do
       assigns = %{acc: acc, name: name, address: address, address_hash: address_hash, conn: conn}
 
       ~H"""
-      {@acc}<span class="hljs-title">{@name}</span> : {get_formatted_address_data(@address, @address_hash, @conn)}
+      <%= @acc %><span class="hljs-title"><%= @name %></span> : <%= get_formatted_address_data(@address, @address_hash, @conn) %>
       """
       |> Safe.to_iodata()
       |> List.to_string()
