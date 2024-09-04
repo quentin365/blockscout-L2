@@ -12,7 +12,7 @@ defmodule NFTMediaHandlerDispatcher.Application do
 
     children =
       if Application.get_env(NFTMediaHandlerDispatcher.Backfiller, :enabled?) do
-        base_children ++ [NFTMediaHandlerDispatcher.Backfiller]
+        [NFTMediaHandlerDispatcher.Backfiller | base_children]
       else
         base_children
       end
