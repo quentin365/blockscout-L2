@@ -9,14 +9,16 @@ defmodule NFTMediaHandlerDispatcher.Backfiller do
 
   use GenServer
 
-  @enqueue_busy_waiting_timeout 1000
-
   def start_link(_) do
     GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
   end
 
   def get_instances(amount) do
-    GenServer.call(__MODULE__, {:get_instances, amount})
+    if Application.get_env(__MODULE__, :enabled?) do
+      GenServer.call(__MODULE__, {:get_instances, amount})
+    else
+      []
+    end
   end
 
   @impl true
@@ -36,7 +38,7 @@ defmodule NFTMediaHandlerDispatcher.Backfiller do
       if GenServer.call(__MODULE__, :not_full?) do
         GenServer.cast(__MODULE__, {:append_to_queue, {url, instance.token_contract_address_hash, instance.token_id}})
       else
-        :timer.sleep(@enqueue_busy_waiting_timeout)
+        :timer.sleep(enqueue_timeout())
 
         enqueue_if_queue_is_not_full(instance)
       end
@@ -70,6 +72,10 @@ defmodule NFTMediaHandlerDispatcher.Backfiller do
   end
 
   defp max_queue_size do
-    Application.get_env(:nft_media_handler, :backfill_queue_size)
+    Application.get_env(__MODULE__, :queue_size)
+  end
+
+  defp enqueue_timeout do
+    Application.get_env(__MODULE__, :enqueue_busy_waiting_timeout)
   end
 end

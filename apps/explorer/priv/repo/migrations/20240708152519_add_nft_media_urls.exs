@@ -1,4 +1,4 @@
-defmodule Explorer.Repo.Migrations.AddNftMediaUrls do
+defmodule Explorer.Repo.Migrations.AddNFTMediaUrls do
   use Ecto.Migration
 
   def change do

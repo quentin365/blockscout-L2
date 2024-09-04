@@ -121,7 +121,7 @@ defmodule BlockScoutWeb.ABIEncodedValueView do
       end)
 
     spacing = String.duplicate(" ", depth * 2)
-    delimited = Enum.intersperse(values, ",\n") |> dbg()
+    delimited = Enum.intersperse(values, ",\n")
 
     assigns = %{spacing: spacing, delimited: delimited}
 
@@ -180,8 +180,8 @@ defmodule BlockScoutWeb.ABIEncodedValueView do
     if no_links do
       base_value_html(:address_text, value, no_links)
     else
-      address = hex(value) |> dbg()
-      path = address_path(BlockScoutWeb.Endpoint, :show, address) |> dbg()
+      address = hex(value)
+      path = address_path(BlockScoutWeb.Endpoint, :show, address)
 
       assigns = %{address: address, path: path}
 

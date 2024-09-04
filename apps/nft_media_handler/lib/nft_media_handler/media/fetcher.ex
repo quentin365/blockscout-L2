@@ -19,6 +19,9 @@ defmodule NFTMediaHandler.Media.Fetcher do
       {:ok, %HTTPoison.Response{status_code: status_code, body: _body}} ->
         {:error, status_code}
 
+      {:error, %HTTPoison.Error{reason: reason}} ->
+        {:error, reason}
+
       {:error, reason} ->
         {:error, reason}
     end

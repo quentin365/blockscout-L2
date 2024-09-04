@@ -6,17 +6,23 @@ defmodule NFTMediaHandlerDispatcher.Application do
 
   @impl Application
   def start(_type, _args) do
-    children = [
-      NFTMediaHandlerDispatcher.Queue,
-      NFTMediaHandlerDispatcher.Backfiller
+    base_children = [
+      NFTMediaHandlerDispatcher.Queue
     ]
+
+    children =
+      if Application.get_env(NFTMediaHandlerDispatcher.Backfiller, :enabled?) do
+        base_children ++ [NFTMediaHandlerDispatcher.Backfiller]
+      else
+        base_children
+      end
 
     opts = [strategy: :one_for_one, name: NFTMediaHandlerDispatcher.Supervisor, max_restarts: 1_000]
 
-    if Application.get_env(:nft_media_handler, :standalone_media_worker?) do
-      Supervisor.start_link([], opts)
-    else
+    if Application.get_env(:nft_media_handler, :enabled?) do
       Supervisor.start_link(children, opts)
+    else
+      Supervisor.start_link([], opts)
     end
   end
 end

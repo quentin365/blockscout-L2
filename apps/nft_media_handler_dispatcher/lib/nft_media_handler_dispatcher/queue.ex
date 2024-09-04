@@ -15,18 +15,20 @@ defmodule NFTMediaHandlerDispatcher.Queue do
   @queue_storage :queue_storage
   @tasks_in_progress :tasks_in_progress
 
-  @spec process_new_instance(any()) :: :ignore | :ok
-  def process_new_instance({:ok, %Instance{} = nft}) do
-    url = get_media_url_from_metadata(nft.metadata)
+  @spec process_new_instance(any()) :: any()
+  def process_new_instance({:ok, %Instance{} = nft} = initial_value) do
+    if Application.get_env(:nft_media_handler, :enabled?) do
+      url = get_media_url_from_metadata(nft.metadata)
 
-    if url do
-      GenServer.cast(__MODULE__, {:add_to_queue, {nft.token_contract_address_hash, nft.token_id, url}})
-    else
-      :ignore
+      if url do
+        GenServer.cast(__MODULE__, {:add_to_queue, {nft.token_contract_address_hash, nft.token_id, url}})
+      end
     end
+
+    initial_value
   end
 
-  def process_new_instance(_), do: :ignore
+  def process_new_instance(initial_value), do: initial_value
 
   def get_urls_to_fetch(amount) do
     GenServer.call(__MODULE__, {:get_urls_to_fetch, amount})
