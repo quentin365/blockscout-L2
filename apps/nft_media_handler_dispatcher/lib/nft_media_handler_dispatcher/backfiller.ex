@@ -14,7 +14,7 @@ defmodule NFTMediaHandlerDispatcher.Backfiller do
   end
 
   def get_instances(amount) do
-    if Application.get_env(__MODULE__, :enabled?) do
+    if config()[:enabled?] do
       GenServer.call(__MODULE__, {:get_instances, amount})
     else
       []
@@ -72,10 +72,14 @@ defmodule NFTMediaHandlerDispatcher.Backfiller do
   end
 
   defp max_queue_size do
-    Application.get_env(__MODULE__, :queue_size)
+    config()[:queue_size]
   end
 
   defp enqueue_timeout do
-    Application.get_env(__MODULE__, :enqueue_busy_waiting_timeout)
+    config()[:enqueue_busy_waiting_timeout]
+  end
+
+  defp config do
+    Application.get_env(:nft_media_handler, __MODULE__)
   end
 end

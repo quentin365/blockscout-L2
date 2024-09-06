@@ -1075,7 +1075,7 @@ config :nft_media_handler,
   worker_batch_size: ConfigHelper.parse_integer_env_var("NFT_MEDIA_HANDLER_WORKER_BATCH_SIZE", 10),
   worker_spawn_tasks_timeout: ConfigHelper.parse_time_env_var("NFT_MEDIA_HANDLER_WORKER_SPAWN_TASKS_TIMEOUT", "100ms")
 
-config NFTMediaHandlerDispatcher.Backfiller,
+config :nft_media_handler, NFTMediaHandlerDispatcher.Backfiller,
   enabled?: ConfigHelper.parse_bool_env_var("NFT_MEDIA_HANDLER_BACKFILL_ENABLED"),
   queue_size: ConfigHelper.parse_integer_env_var("NFT_MEDIA_HANDLER_BACKFILL_QUEUE_SIZE", 1000),
   enqueue_busy_waiting_timeout:

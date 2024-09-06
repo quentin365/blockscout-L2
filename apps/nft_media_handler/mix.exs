@@ -34,7 +34,6 @@ defmodule NFTMediaHandler.MixProject do
       {:image, "~> 0.54"},
       {:httpoison, "~> 2.0"},
       {:evision, "~> 0.2"},
-      {:exla, "~> 0.7"},
       {:nft_media_handler_dispatcher_interface, in_umbrella: true}
     ]
     |> optionally_nft_media_handler()

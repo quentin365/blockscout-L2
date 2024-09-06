@@ -4,8 +4,7 @@ WORKDIR /app
 
 ENV MIX_ENV="prod"
 
-RUN apk --no-cache --update add alpine-sdk gmp-dev automake libtool inotify-tools autoconf python3 file gcompat elfutils-dev
-RUN apk add --repository=https://dl-cdn.alpinelinux.org/alpine/v3.16/main/ libexecinfo-dev
+RUN apk --no-cache --update add alpine-sdk gmp-dev automake libtool inotify-tools autoconf python3 file gcompat
 
 RUN set -ex && \
     apk --update add libstdc++ curl ca-certificates gcompat
@@ -30,9 +29,6 @@ ARG MUD_INDEXER_ENABLED
 ENV MUD_INDEXER_ENABLED=${MUD_INDEXER_ENABLED}
 ARG SHRINK_INTERNAL_TRANSACTIONS_ENABLED
 ENV SHRINK_INTERNAL_TRANSACTIONS_ENABLED=${SHRINK_INTERNAL_TRANSACTIONS_ENABLED}
-#ARG XLA_TARGET_PLATFORM="aarch64-linux-gnu" or "x86_64-linux-gnu"
-ARG XLA_TARGET_PLATFORM
-RUN if [[ -z "$XLA_TARGET_PLATFORM" ]] ; then : ; else export XLA_TARGET_PLATFORM=$XLA_TARGET_PLATFORM ; fi
 
 ADD apps ./apps
 ADD config ./config
@@ -56,7 +52,7 @@ RUN cd apps/block_scout_web/assets/ && \
     cd /app/apps/explorer/ && \
     npm install && \
     apk update && \
-    apk del --force-broken-world alpine-sdk gmp-dev automake libtool inotify-tools autoconf python3 elfutils-dev
+    apk del --force-broken-world alpine-sdk gmp-dev automake libtool inotify-tools autoconf python3 
 
 
 RUN apk add --update git make 
@@ -96,5 +92,7 @@ COPY --from=builder --chown=${BLOCKSCOUT_USER}:${BLOCKSCOUT_GROUP} /app/apps/exp
 COPY --from=builder --chown=${BLOCKSCOUT_USER}:${BLOCKSCOUT_GROUP} /app/config/config_helper.exs ./config/config_helper.exs
 COPY --from=builder --chown=${BLOCKSCOUT_USER}:${BLOCKSCOUT_GROUP} /app/config/config_helper.exs /app/releases/${RELEASE_VERSION}/config_helper.exs
 COPY --from=builder --chown=${BLOCKSCOUT_USER}:${BLOCKSCOUT_GROUP} /app/config/assets/precompiles-arbitrum.json ./config/assets/precompiles-arbitrum.json
+
+RUN mkdir dets && chown ${BLOCKSCOUT_USER}:${BLOCKSCOUT_GROUP} dets
 
 USER ${BLOCKSCOUT_USER}:${BLOCKSCOUT_GROUP}

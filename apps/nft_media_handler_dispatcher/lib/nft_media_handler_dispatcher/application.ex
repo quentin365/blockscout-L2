@@ -11,7 +11,7 @@ defmodule NFTMediaHandlerDispatcher.Application do
     ]
 
     children =
-      if Application.get_env(NFTMediaHandlerDispatcher.Backfiller, :enabled?) do
+      if Application.get_env(:nft_media_handler, NFTMediaHandlerDispatcher.Backfiller)[:enabled?] do
         [NFTMediaHandlerDispatcher.Backfiller | base_children]
       else
         base_children

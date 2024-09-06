@@ -51,8 +51,8 @@ defmodule NFTMediaHandlerDispatcher.Queue do
   end
 
   def init(_) do
-    {:ok, queue} = :dets.open_file(@queue_storage, type: :bag)
-    {:ok, in_progress} = :dets.open_file(@tasks_in_progress, type: :set)
+    {:ok, queue} = :dets.open_file(@queue_storage, file: './dets/#{@queue_storage}', type: :bag)
+    {:ok, in_progress} = :dets.open_file(@tasks_in_progress, type: :set, file: './dets/#{@tasks_in_progress}')
 
     Process.flag(:trap_exit, true)
 
@@ -122,6 +122,8 @@ defmodule NFTMediaHandlerDispatcher.Queue do
           end)
 
         {high_priority_urls ++ low_priority_urls, high_priority_instances ++ low_priority_instances}
+      else
+        {high_priority_urls, high_priority_instances}
       end
 
     :dets.insert(in_progress, instances)
