@@ -257,7 +257,16 @@ defmodule Explorer.Chain.AdvancedFilter do
     query =
       from(transaction in Transaction,
         as: :transaction,
+<<<<<<< HEAD
         where: transaction.block_consensus == true,
+=======
+        preload: [
+          :block,
+          from_address: [:names, :smart_contract, :proxy_implementations],
+          to_address: [[badges: [:badge, :address]], :names, :smart_contract, :proxy_implementations],
+          created_contract_address: [[badges: [:badge, :address]], :names, :smart_contract, :proxy_implementations]
+        ],
+>>>>>>> origin/vb-address-badges
         order_by: [
           desc: transaction.block_number,
           desc: transaction.index
@@ -291,6 +300,12 @@ defmodule Explorer.Chain.AdvancedFilter do
         join: transaction in assoc(internal_transaction, :transaction),
         as: :transaction,
         preload: [
+<<<<<<< HEAD
+=======
+          from_address: [:names, :smart_contract, :proxy_implementations],
+          to_address: [[badges: [:badge, :address]], :names, :smart_contract, :proxy_implementations],
+          created_contract_address: [[badges: [:badge, :address]], :names, :smart_contract, :proxy_implementations],
+>>>>>>> origin/vb-address-badges
           transaction: transaction
         ],
         where: transaction.block_consensus == true and internal_transaction.index > 0,
