@@ -20,15 +20,13 @@ defmodule Explorer.Migrator.ShrinkInternalTransactions do
   def migration_name, do: @migration_name
 
   @impl FillingMigration
-  def last_unprocessed_identifiers(%{max_block_number: -1} = state), do: {[], state}
+  def last_unprocessed_identifiers(%{"max_block_number" => -1} = state), do: {[], state}
 
-  def last_unprocessed_identifiers(%{max_block_number: from_block_number} = state) do
+  def last_unprocessed_identifiers(%{"max_block_number" => from_block_number} = state) do
     limit = batch_size() * concurrency()
     to_block_number = max(from_block_number - limit + 1, 0)
 
-    Logger.info("ShrinkInternalTransactions new batch defined: #{inspect(from_block_number..to_block_number)}")
-
-    {Enum.to_list(from_block_number..to_block_number), %{state | max_block_number: to_block_number - 1}}
+    {Enum.to_list(from_block_number..to_block_number), %{state | "max_block_number" => to_block_number - 1}}
   end
 
   def last_unprocessed_identifiers(state) do
@@ -46,7 +44,7 @@ defmodule Explorer.Migrator.ShrinkInternalTransactions do
     Logger.info("ShrinkInternalTransactions initial block number found: #{inspect(max_block_number)}")
 
     state
-    |> Map.put(:max_block_number, max_block_number || -1)
+    |> Map.put("max_block_number", max_block_number || -1)
     |> last_unprocessed_identifiers()
   end
 
