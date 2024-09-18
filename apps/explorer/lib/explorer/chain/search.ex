@@ -162,6 +162,7 @@ defmodule Explorer.Chain.Search do
         tokens_result =
           search_query
           |> search_token_query(term)
+          |> maybe_hide_scam_addresses(:contract_address_hash)
           |> order_by([token],
             desc_nulls_last: token.circulating_market_cap,
             desc_nulls_last: token.fiat_value,
@@ -176,6 +177,7 @@ defmodule Explorer.Chain.Search do
         contracts_result =
           term
           |> search_contract_query()
+          |> maybe_hide_scam_addresses(:address_hash)
           |> order_by([items], asc: items.name, desc: items.inserted_at)
           |> limit(^paging_options.page_size)
           |> select_repo(options).all()
@@ -217,6 +219,7 @@ defmodule Explorer.Chain.Search do
         address_result =
           if query = search_address_query(search_query) do
             query
+            |> maybe_hide_scam_addresses(:hash)
             |> select_repo(options).all()
           else
             []
@@ -626,6 +629,7 @@ defmodule Explorer.Chain.Search do
       [
         result[:address_hash]
         |> search_address_query()
+        |> maybe_hide_scam_addresses(:hash)
         |> select_repo(options).all()
         |> merge_address_search_result_with_ens_info(result)
       ]
