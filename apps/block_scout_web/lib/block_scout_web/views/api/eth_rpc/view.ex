@@ -66,8 +66,8 @@ defmodule BlockScoutWeb.API.EthRPC.View do
   @spec sanitize_error(any(), :jason | :poison) :: String.t()
   def sanitize_error(error, json_encoder) do
     case json_encoder do
-      :jason -> if is_map(error), do: Jason.encode!(error), else: "\"#{error}\""
-      :poison -> if is_map(error), do: Poison.encode!(error), else: "\"#{error}\""
+      :jason -> if is_map(error), do: Jason.encode!(error), else: "#{error}"
+      :poison -> if is_map(error), do: Poison.encode!(error), else: "#{error}"
     end
   end
 
@@ -107,7 +107,7 @@ defmodule BlockScoutWeb.API.EthRPC.View do
       """
     end
 
-    def encode(%View{id: id, error: error}, _options) when is_map(error) do
+    def encode(%View{id: id, error: error}, _options) do
       error = Jason.encode!(error)
 
       """
