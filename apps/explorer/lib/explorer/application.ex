@@ -144,8 +144,19 @@ defmodule Explorer.Application do
         configure(Explorer.Migrator.RestoreOmittedWETHTransfers),
         configure(Explorer.Migrator.FilecoinPendingAddressOperations),
         configure_mode_dependent_process(Explorer.Migrator.ShrinkInternalTransactions, :indexer),
+        configure_chain_type_dependent_process(Explorer.Chain.Cache.BlackfortValidatorsCounters, :blackfort),
         configure_chain_type_dependent_process(Explorer.Chain.Cache.StabilityValidatorsCounters, :stability),
-        configure_mode_dependent_process(Explorer.Migrator.SanitizeMissingTokenBalances, :indexer)
+        Explorer.Migrator.SanitizeDuplicatedLogIndexLogs
+        |> configure()
+        |> configure_chain_type_dependent_process([
+          :polygon_zkevm,
+          :rsk,
+          :filecoin
+        ]),
+        configure_mode_dependent_process(Explorer.Migrator.SanitizeMissingTokenBalances, :indexer),
+        configure_mode_dependent_process(Explorer.Migrator.SanitizeReplacedTransactions, :indexer),
+        configure_mode_dependent_process(Explorer.Migrator.ReindexInternalTransactionsWithIncompatibleStatus, :indexer),
+        Explorer.Migrator.RefetchContractCodes |> configure() |> configure_chain_type_dependent_process(:zksync)
       ]
       |> List.flatten()
 
@@ -159,6 +170,7 @@ defmodule Explorer.Application do
         Explorer.Repo.Optimism,
         Explorer.Repo.PolygonEdge,
         Explorer.Repo.PolygonZkevm,
+        Explorer.Repo.Scroll,
         Explorer.Repo.ZkSync,
         Explorer.Repo.Celo,
         Explorer.Repo.RSK,
@@ -168,7 +180,8 @@ defmodule Explorer.Application do
         Explorer.Repo.BridgedTokens,
         Explorer.Repo.Filecoin,
         Explorer.Repo.Stability,
-        Explorer.Repo.ShrunkInternalTransactions
+        Explorer.Repo.ShrunkInternalTransactions,
+        Explorer.Repo.Blackfort
       ]
     else
       []
@@ -197,6 +210,14 @@ defmodule Explorer.Application do
 
   defp configure(process) do
     if should_start?(process) do
+      process
+    else
+      []
+    end
+  end
+
+  defp configure_chain_type_dependent_process(process, chain_types) when is_list(chain_types) do
+    if Application.get_env(:explorer, :chain_type) in chain_types do
       process
     else
       []

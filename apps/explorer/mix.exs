@@ -24,7 +24,7 @@ defmodule Explorer.Mixfile do
         dialyzer: :test
       ],
       start_permanent: Mix.env() == :prod,
-      version: "6.8.1",
+      version: "6.9.0",
       xref: [exclude: [BlockScoutWeb.Routers.WebRouter.Helpers, Indexer.Helper]]
     ]
   end
@@ -114,7 +114,7 @@ defmodule Explorer.Mixfile do
       # `Timex.Duration` for `Explorer.Counters.AverageBlockTime.average_block_time/0`
       {:timex, "~> 3.7.1"},
       {:con_cache, "~> 1.0"},
-      {:tesla, "~> 1.12.1"},
+      {:tesla, "~> 1.13.0"},
       {:cbor, "~> 1.0"},
       {:cloak_ecto, "~> 1.3.0"},
       {:redix, "~> 1.1"},
@@ -124,7 +124,11 @@ defmodule Explorer.Mixfile do
       {:ueberauth, "~> 0.7"},
       {:recon, "~> 2.5"},
       {:varint, "~> 1.4"},
-      {:blake2, "~> 1.0"}
+      {:blake2, "~> 1.0"},
+      {:ueberauth_auth0, "~> 2.0"},
+      {:oauth2, "~> 2.0"},
+      {:siwe, github: "royal-markets/siwe-ex", ref: "51c9c08240eb7eea3c35693011f8d260cd9bb3be"},
+      {:joken, "~> 2.6"}
     ]
   end
 
