@@ -45,7 +45,8 @@ config :block_scout_web, :recaptcha,
   v3_secret_key: System.get_env("RE_CAPTCHA_V3_SECRET_KEY"),
   is_disabled: ConfigHelper.parse_bool_env_var("RE_CAPTCHA_DISABLED"),
   check_hostname?: ConfigHelper.parse_bool_env_var("RE_CAPTCHA_CHECK_HOSTNAME", "true"),
-  score_threshold: ConfigHelper.parse_float_env_var("RE_CAPTCHA_SCORE_THRESHOLD", "0.5")
+  score_threshold: ConfigHelper.parse_float_env_var("RE_CAPTCHA_SCORE_THRESHOLD", "0.5"),
+  bypass_token: ConfigHelper.safe_get_env("RE_CAPTCHA_BYPASS_TOKEN", nil)
 
 network_path =
   "NETWORK_PATH"
@@ -103,7 +104,8 @@ config :block_scout_web, :contract,
   verification_max_libraries: ConfigHelper.parse_integer_env_var("CONTRACT_VERIFICATION_MAX_LIBRARIES", 10),
   max_length_to_show_string_without_trimming: System.get_env("CONTRACT_MAX_STRING_LENGTH_WITHOUT_TRIMMING", "2040"),
   disable_interaction: ConfigHelper.parse_bool_env_var("CONTRACT_DISABLE_INTERACTION"),
-  certified_list: ConfigHelper.parse_list_env_var("CONTRACT_CERTIFIED_LIST", "")
+  certified_list: ConfigHelper.parse_list_env_var("CONTRACT_CERTIFIED_LIST", ""),
+  partial_reverification_disabled: !ConfigHelper.parse_bool_env_var("CONTRACT_ENABLE_PARTIAL_REVERIFICATION")
 
 default_global_api_rate_limit = 50
 default_api_rate_limit_by_key = 10
@@ -234,7 +236,6 @@ disable_webapp? = ConfigHelper.parse_bool_env_var("DISABLE_WEBAPP")
 app_mode = ConfigHelper.mode()
 disable_exchange_rates? = ConfigHelper.parse_bool_env_var("DISABLE_EXCHANGE_RATES")
 
-checksum_function = System.get_env("CHECKSUM_FUNCTION")
 exchange_rates_coin = System.get_env("EXCHANGE_RATES_COIN")
 
 config :explorer,
@@ -256,7 +257,6 @@ config :explorer,
      end),
   addresses_blacklist: System.get_env("ADDRESSES_BLACKLIST"),
   addresses_blacklist_key: System.get_env("ADDRESSES_BLACKLIST_KEY"),
-  checksum_function: checksum_function && String.to_atom(checksum_function),
   elasticity_multiplier: ConfigHelper.parse_integer_env_var("EIP_1559_ELASTICITY_MULTIPLIER", 2),
   base_fee_max_change_denominator: ConfigHelper.parse_integer_env_var("EIP_1559_BASE_FEE_MAX_CHANGE_DENOMINATOR", 8),
   csv_export_limit: ConfigHelper.parse_integer_env_var("CSV_EXPORT_LIMIT", 10_000),
@@ -551,7 +551,8 @@ config :explorer, Explorer.MicroserviceInterfaces.AccountAbstraction,
 
 config :explorer, Explorer.MicroserviceInterfaces.Metadata,
   service_url: System.get_env("MICROSERVICE_METADATA_URL"),
-  enabled: ConfigHelper.parse_bool_env_var("MICROSERVICE_METADATA_ENABLED")
+  enabled: ConfigHelper.parse_bool_env_var("MICROSERVICE_METADATA_ENABLED"),
+  proxy_requests_timeout: ConfigHelper.parse_time_env_var("MICROSERVICE_METADATA_PROXY_REQUESTS_TIMEOUT", "30s")
 
 config :explorer, Explorer.SmartContract.StylusVerifierInterface,
   service_url: ConfigHelper.parse_microservice_url("MICROSERVICE_STYLUS_VERIFIER_URL")
@@ -673,6 +674,9 @@ config :explorer, Explorer.Migrator.ShrinkInternalTransactions,
 config :explorer, Explorer.Migrator.BackfillMultichainSearchDB,
   concurrency: 1,
   batch_size: ConfigHelper.parse_integer_env_var("MIGRATION_BACKFILL_MULTICHAIN_SEARCH_BATCH_SIZE", 10)
+
+config :explorer, Explorer.Migrator.HeavyDbIndexOperation,
+  check_interval: ConfigHelper.parse_time_env_var("MIGRATION_HEAVY_INDEX_OPERATIONS_CHECK_INTERVAL", "10m")
 
 config :explorer, Explorer.Migrator.ArbitrumDaRecordsNormalization,
   enabled: ConfigHelper.chain_type() == :arbitrum,
@@ -857,11 +861,12 @@ config :indexer, Indexer.Fetcher.TokenInstance.SanitizeERC721,
   enabled: !ConfigHelper.parse_bool_env_var("INDEXER_DISABLE_TOKEN_INSTANCE_ERC_721_SANITIZE_FETCHER", "false")
 
 config :indexer, Indexer.Fetcher.EmptyBlocksSanitizer,
-  batch_size: ConfigHelper.parse_integer_env_var("INDEXER_EMPTY_BLOCKS_SANITIZER_BATCH_SIZE", 100),
+  batch_size: ConfigHelper.parse_integer_env_var("INDEXER_EMPTY_BLOCKS_SANITIZER_BATCH_SIZE", 10),
   interval: ConfigHelper.parse_time_env_var("INDEXER_EMPTY_BLOCKS_SANITIZER_INTERVAL", "10s")
 
 config :indexer, Indexer.Block.Realtime.Fetcher,
-  max_gap: ConfigHelper.parse_integer_env_var("INDEXER_REALTIME_FETCHER_MAX_GAP", 1000)
+  max_gap: ConfigHelper.parse_integer_env_var("INDEXER_REALTIME_FETCHER_MAX_GAP", 1000),
+  polling_period: ConfigHelper.parse_time_env_var("INDEXER_REALTIME_FETCHER_POLLING_PERIOD")
 
 config :indexer, Indexer.Block.Catchup.MissingRangesCollector,
   batch_size: ConfigHelper.parse_integer_env_var("INDEXER_CATCHUP_MISSING_RANGES_BATCH_SIZE", 100_000)
@@ -932,6 +937,9 @@ config :indexer, Indexer.Fetcher.Optimism.Deposit.Supervisor, enabled: ConfigHel
 config :indexer, Indexer.Fetcher.Optimism.Withdrawal.Supervisor, enabled: ConfigHelper.chain_type() == :optimism
 config :indexer, Indexer.Fetcher.Optimism.WithdrawalEvent.Supervisor, enabled: ConfigHelper.chain_type() == :optimism
 
+config :indexer, Indexer.Fetcher.Optimism.EIP1559ConfigUpdate.Supervisor,
+  disabled?: ConfigHelper.chain_type() != :optimism
+
 config :indexer, Indexer.Fetcher.Optimism,
   optimism_l1_rpc: System.get_env("INDEXER_OPTIMISM_L1_RPC"),
   optimism_l1_system_config: System.get_env("INDEXER_OPTIMISM_L1_SYSTEM_CONFIG_CONTRACT"),
@@ -959,6 +967,10 @@ config :indexer, Indexer.Fetcher.Optimism.TransactionBatch,
   genesis_block_l2: ConfigHelper.parse_integer_or_nil_env_var("INDEXER_OPTIMISM_L2_BATCH_GENESIS_BLOCK_NUMBER"),
   inbox: System.get_env("INDEXER_OPTIMISM_L1_BATCH_INBOX"),
   submitter: System.get_env("INDEXER_OPTIMISM_L1_BATCH_SUBMITTER")
+
+config :indexer, Indexer.Fetcher.Optimism.EIP1559ConfigUpdate,
+  chunk_size: ConfigHelper.parse_integer_env_var("INDEXER_OPTIMISM_L2_HOLOCENE_BLOCKS_CHUNK_SIZE", 25),
+  holocene_timestamp_l2: ConfigHelper.parse_integer_or_nil_env_var("INDEXER_OPTIMISM_L2_HOLOCENE_TIMESTAMP")
 
 config :indexer, Indexer.Fetcher.Withdrawal.Supervisor,
   disabled?: System.get_env("INDEXER_DISABLE_WITHDRAWALS_FETCHER", "true") == "true"
@@ -1057,6 +1069,16 @@ config :indexer, Indexer.Fetcher.Arbitrum.RollupMessagesCatchup.Supervisor,
 config :indexer, Indexer.Fetcher.Arbitrum.MessagesToL2Matcher.Supervisor,
   disabled?: not ConfigHelper.parse_bool_env_var("INDEXER_ARBITRUM_BRIDGE_MESSAGES_TRACKING_ENABLED")
 
+config :indexer, Indexer.Fetcher.Arbitrum.DataBackfill,
+  recheck_interval:
+    ConfigHelper.parse_time_env_var("INDEXER_ARBITRUM_DATA_BACKFILL_UNINDEXED_BLOCKS_RECHECK_INTERVAL", "120s"),
+  backfill_blocks_depth: ConfigHelper.parse_integer_env_var("INDEXER_ARBITRUM_DATA_BACKFILL_BLOCKS_DEPTH", 500)
+
+config :indexer, Indexer.Fetcher.Arbitrum.DataBackfill.Supervisor,
+  disabled?:
+    ConfigHelper.chain_type() != :arbitrum ||
+      not ConfigHelper.parse_bool_env_var("INDEXER_ARBITRUM_DATA_BACKFILL_ENABLED")
+
 config :indexer, Indexer.Fetcher.RootstockData.Supervisor,
   disabled?:
     ConfigHelper.chain_type() != :rsk || ConfigHelper.parse_bool_env_var("INDEXER_DISABLE_ROOTSTOCK_DATA_FETCHER")
@@ -1153,13 +1175,13 @@ config :indexer, Indexer.Fetcher.Filecoin.BeryxAPI,
   base_url: ConfigHelper.safe_get_env("BERYX_API_BASE_URL", "https://api.zondax.ch/fil/data/v3/mainnet"),
   api_token: System.get_env("BERYX_API_TOKEN")
 
-filecoin_native_address_fetcher_enabled? =
-  ConfigHelper.chain_type() == :filecoin and
-    not ConfigHelper.parse_bool_env_var("INDEXER_DISABLE_FILECOIN_ADDRESS_INFO_FETCHER")
+config :indexer, Indexer.Fetcher.Filecoin.FilfoxAPI,
+  base_url: ConfigHelper.safe_get_env("FILFOX_API_BASE_URL", "https://filfox.info/api/v1")
 
 config :indexer, Indexer.Fetcher.Filecoin.AddressInfo.Supervisor,
-  enabled: filecoin_native_address_fetcher_enabled?,
-  disabled?: not filecoin_native_address_fetcher_enabled?
+  disabled?:
+    ConfigHelper.chain_type() != :filecoin or
+      ConfigHelper.parse_bool_env_var("INDEXER_DISABLE_FILECOIN_ADDRESS_INFO_FETCHER")
 
 config :indexer, Indexer.Fetcher.Filecoin.AddressInfo,
   concurrency: ConfigHelper.parse_integer_env_var("INDEXER_FILECOIN_ADDRESS_INFO_CONCURRENCY", 1)
