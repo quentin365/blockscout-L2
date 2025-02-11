@@ -136,8 +136,10 @@ for migrator <- [
       Explorer.Migrator.SanitizeDuplicatedLogIndexLogs,
       Explorer.Migrator.RefetchContractCodes,
       Explorer.Migrator.BackfillMultichainSearchDB,
+      Explorer.Migrator.SanitizeVerifiedAddresses,
 
       # Heavy DB index operations
+      Explorer.Migrator.HeavyDbIndexOperation.CreateAddressesVerifiedIndex,
       Explorer.Migrator.HeavyDbIndexOperation.CreateLogsBlockHashIndex,
       Explorer.Migrator.HeavyDbIndexOperation.DropLogsBlockNumberAscIndexAscIndex,
       Explorer.Migrator.HeavyDbIndexOperation.CreateLogsAddressHashBlockNumberDescIndexDescIndex,
