@@ -1309,22 +1309,4 @@ defmodule Explorer.Chain.Token.Instance do
       where: is_nil(token_instance.metadata)
     )
   end
-
-  @doc """
-  Drops metadata for the given token contract address hash.
-  It is used in the API endpoint /:address_hash_param/instances/trigger-nft-collection-metadata-refetch,
-  which should be called by admin service.
-  """
-  @spec drop_metadata(Hash.Address.t()) :: {non_neg_integer(), nil}
-  def drop_metadata(token_contract_address_hash) do
-    now = DateTime.utc_now()
-
-    Repo.update_all(
-      from(instance in __MODULE__,
-        where: instance.token_contract_address_hash == ^token_contract_address_hash
-      ),
-      [set: [metadata: nil, error: nil, updated_at: now]],
-      timeout: @timeout
-    )
-  end
 end
