@@ -73,8 +73,7 @@ defmodule Explorer.Chain.Search do
            |> ExplorerHelper.maybe_hide_scam_addresses(:contract_address_hash, options)
            |> union_all(
              ^(address_hash
-               |> search_address_by_address_hash_query()
-               |> ExplorerHelper.maybe_hide_scam_addresses(:hash, options))
+               |> search_address_by_address_hash_query())
            )
            |> select_repo(options).all(), nil}
 
@@ -315,8 +314,7 @@ defmodule Explorer.Chain.Search do
             |> ExplorerHelper.maybe_hide_scam_addresses(:contract_address_hash, options)
             |> union_all(
               ^(address_hash
-                |> search_address_by_address_hash_query()
-                |> ExplorerHelper.maybe_hide_scam_addresses(:hash, options))
+                |> search_address_by_address_hash_query())
             )
             |> select_repo(options).all()
           ]
@@ -790,6 +788,8 @@ defmodule Explorer.Chain.Search do
                "circulating_market_cap" => circulating_market_cap,
                "fiat_value" => fiat_value,
                "is_verified_via_admin_panel" => is_verified_via_admin_panel,
+               "holders_count" => holder_count,
+               # todo: It should be removed in favour `holders_count` property with the next release after 8.0.0
                "holder_count" => holder_count,
                "name" => name,
                "inserted_at" => inserted_at
@@ -894,7 +894,6 @@ defmodule Explorer.Chain.Search do
         [
           address_hash
           |> search_address_by_address_hash_query()
-          |> ExplorerHelper.maybe_hide_scam_addresses(:hash, options)
           |> select_repo(options).all()
           |> merge_address_search_result_with_ens_info(ens_result)
         ]
@@ -1094,6 +1093,8 @@ defmodule Explorer.Chain.Search do
       "circulating_market_cap" => circulating_market_cap,
       "fiat_value" => exchange_rate,
       "is_verified_via_admin_panel" => is_verified_via_admin_panel,
+      "holders_count" => holder_count,
+      # todo: It should be removed in favour `holders_count` property with the next release after 8.0.0
       "holder_count" => holder_count,
       "name" => name,
       "inserted_at" => inserted_at_datetime

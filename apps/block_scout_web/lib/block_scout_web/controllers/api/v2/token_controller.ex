@@ -1,11 +1,12 @@
 defmodule BlockScoutWeb.API.V2.TokenController do
   use BlockScoutWeb, :controller
-  use Utils.CompileTimeEnvHelper, bridged_token_enabled: [:explorer, [Explorer.Chain.BridgedToken, :enabled]]
+  use Utils.CompileTimeEnvHelper, bridged_tokens_enabled: [:explorer, [Explorer.Chain.BridgedToken, :enabled]]
 
   alias BlockScoutWeb.{AccessHelper, CaptchaHelper}
   alias BlockScoutWeb.API.V2.{AddressView, TransactionView}
   alias Explorer.{Chain, Helper, PagingOptions}
   alias Explorer.Chain.{Address, BridgedToken, Token, Token.Instance}
+  alias Explorer.Migrator.BackfillMetadataURL
   alias Indexer.Fetcher.OnDemand.NFTCollectionMetadataRefetch, as: NFTCollectionMetadataRefetchOnDemand
   alias Indexer.Fetcher.OnDemand.TokenInstanceMetadataRefetch, as: TokenInstanceMetadataRefetchOnDemand
   alias Indexer.Fetcher.OnDemand.TokenMetadataRefetch, as: TokenMetadataRefetchOnDemand
@@ -49,7 +50,7 @@ defmodule BlockScoutWeb.API.V2.TokenController do
     end
   end
 
-  if @bridged_token_enabled do
+  if @bridged_tokens_enabled do
     defp token_response(conn, token, address_hash) do
       if token.bridged do
         bridged_token =
@@ -75,7 +76,7 @@ defmodule BlockScoutWeb.API.V2.TokenController do
   def counters(conn, %{"address_hash_param" => address_hash_string} = params) do
     with {:format, {:ok, address_hash}} <- {:format, Chain.string_to_address_hash(address_hash_string)},
          {:ok, false} <- AccessHelper.restricted_access?(address_hash_string, params),
-         {:not_found, true} <- {:not_found, Chain.token_from_address_hash_exists?(address_hash, @api_true)} do
+         {:not_found, true} <- {:not_found, Token.by_contract_address_hash_exists?(address_hash, @api_true)} do
       {transfer_count, token_holder_count} = Chain.fetch_token_counters(address_hash, 30_000)
 
       json(conn, %{transfers_count: to_string(transfer_count), token_holders_count: to_string(token_holder_count)})
@@ -85,7 +86,7 @@ defmodule BlockScoutWeb.API.V2.TokenController do
   def transfers(conn, %{"address_hash_param" => address_hash_string} = params) do
     with {:format, {:ok, address_hash}} <- {:format, Chain.string_to_address_hash(address_hash_string)},
          {:ok, false} <- AccessHelper.restricted_access?(address_hash_string, params),
-         {:not_found, true} <- {:not_found, Chain.token_from_address_hash_exists?(address_hash, @api_true)} do
+         {:not_found, true} <- {:not_found, Token.by_contract_address_hash_exists?(address_hash, @api_true)} do
       paging_options = paging_options(params)
 
       results =
@@ -114,7 +115,7 @@ defmodule BlockScoutWeb.API.V2.TokenController do
   def holders(conn, %{"address_hash_param" => address_hash_string} = params) do
     with {:format, {:ok, address_hash}} <- {:format, Chain.string_to_address_hash(address_hash_string)},
          {:ok, false} <- AccessHelper.restricted_access?(address_hash_string, params),
-         {:not_found, {:ok, token}} <- {:not_found, Chain.token_from_address_hash(address_hash, @api_true)} do
+         {:not_found, true} <- {:not_found, Token.by_contract_address_hash_exists?(address_hash, @api_true)} do
       results_plus_one =
         Chain.fetch_token_holders_from_token_hash(address_hash, Keyword.merge(paging_options(params), @api_true))
 
@@ -124,10 +125,9 @@ defmodule BlockScoutWeb.API.V2.TokenController do
 
       conn
       |> put_status(200)
-      |> render(:token_balances, %{
+      |> render(:token_holders, %{
         token_balances: token_balances |> maybe_preload_ens() |> maybe_preload_metadata(),
-        next_page_params: next_page_params,
-        token: token
+        next_page_params: next_page_params
       })
     end
   end
@@ -210,17 +210,40 @@ defmodule BlockScoutWeb.API.V2.TokenController do
          {:format, {token_id, ""}} <- {:format, Integer.parse(token_id_string)},
          {:ok, token_instance} <-
            Instance.nft_instance_by_token_id_and_token_address(token_id, address_hash, @api_true) do
+      fill_metadata_url_task = maybe_run_fill_metadata_url_task(token_instance, token)
+
       token_instance =
         token_instance
         |> Chain.select_repo(@api_true).preload(owner: [:names, :smart_contract, proxy_implementations_association()])
         |> Instance.put_owner_to_token_instance(token, @api_true)
 
+      updated_token_instance =
+        case fill_metadata_url_task && (Task.yield(fill_metadata_url_task) || Task.ignore(fill_metadata_url_task)) do
+          {:ok, [%{error: error}]} when not is_nil(error) ->
+            %Instance{token_instance | metadata: nil}
+
+          _ ->
+            token_instance
+        end
+
       conn
       |> put_status(200)
       |> render(:token_instance, %{
-        token_instance: token_instance,
+        token_instance: updated_token_instance,
         token: token
       })
+    end
+  end
+
+  defp maybe_run_fill_metadata_url_task(token_instance, token) do
+    if not is_nil(token_instance.metadata) && is_nil(token_instance.skip_metadata_url) do
+      Task.async(fn ->
+        BackfillMetadataURL.update_batch([
+          {token_instance.token_contract_address_hash, token_instance.token_id, token.type}
+        ])
+      end)
+    else
+      nil
     end
   end
 
@@ -280,10 +303,9 @@ defmodule BlockScoutWeb.API.V2.TokenController do
 
       conn
       |> put_status(200)
-      |> render(:token_balances, %{
+      |> render(:token_holders, %{
         token_balances: token_holders |> maybe_preload_ens() |> maybe_preload_metadata(),
-        next_page_params: next_page_params,
-        token: token
+        next_page_params: next_page_params
       })
     end
   end
@@ -359,7 +381,7 @@ defmodule BlockScoutWeb.API.V2.TokenController do
 
     with {:format, {:ok, address_hash}} <- {:format, Chain.string_to_address_hash(address_hash_string)},
          {:ok, false} <- AccessHelper.restricted_access?(address_hash_string, params),
-         {:recaptcha, true} <- {:recaptcha, CaptchaHelper.recaptcha_passed?(params)},
+         {:recaptcha, true} <- {:recaptcha, CaptchaHelper.recaptcha_passed?(params, :token_instance_refetch_metadata)},
          {:not_found, {:ok, token}} <- {:not_found, Chain.token_from_address_hash(address_hash, @api_true)},
          {:not_found, false} <- {:not_found, Chain.erc_20_token?(token)},
          {:format, {token_id, ""}} <- {:format, Integer.parse(token_id_string)},

@@ -7,7 +7,8 @@ defmodule BlockScoutWeb.API.V2.TokenTransferController do
     only: [
       split_list_by_page: 1,
       paging_options: 1,
-      token_transfers_next_page_params: 3
+      token_transfers_next_page_params: 3,
+      fetch_scam_token_toggle: 2
     ]
 
   import BlockScoutWeb.PagingHelper,
@@ -43,6 +44,7 @@ defmodule BlockScoutWeb.API.V2.TokenTransferController do
       end)
       |> Keyword.merge(token_transfers_types_options(params))
       |> Keyword.merge(@api_true)
+      |> fetch_scam_token_toggle(conn)
 
     result =
       options
@@ -55,9 +57,11 @@ defmodule BlockScoutWeb.API.V2.TokenTransferController do
 
     transactions =
       token_transfers
-      |> Enum.map(fn token_transfer ->
-        token_transfer.transaction
-      end)
+      |> Enum.map(& &1.transaction)
+      # Celo's Epoch logs does not have an associated transaction and linked to
+      # the block instead, so we discard these token transfers for transaction
+      # decoding
+      |> Enum.reject(&is_nil/1)
       |> Enum.uniq()
 
     decoded_transactions = Transaction.decode_transactions(transactions, true, @api_true)
