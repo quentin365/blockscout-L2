@@ -16,12 +16,14 @@ defmodule Indexer.Block.Realtime.Fetcher do
       async_import_blobs: 2,
       async_import_block_rewards: 2,
       async_import_celo_epoch_block_operations: 2,
+      async_import_celo_accounts: 2,
       async_import_created_contract_codes: 2,
       async_import_filecoin_addresses_info: 2,
       async_import_internal_transactions: 2,
       async_import_polygon_zkevm_bridge_l1_tokens: 1,
       async_import_realtime_coin_balances: 1,
       async_import_replaced_transactions: 2,
+      async_import_signed_authorizations_statuses: 2,
       async_import_token_balances: 2,
       async_import_token_instances: 1,
       async_import_tokens: 2,
@@ -294,11 +296,13 @@ defmodule Indexer.Block.Realtime.Fetcher do
       |> put_in([:block_rewards], chain_import_block_rewards)
 
     with {:import, {:ok, imported} = ok} <- {:import, Chain.import(chain_import_options)} do
-      last_batch =
+      last_block =
         chain_import_options[:blocks][:params]
         |> Enum.max_by(& &1.number, fn -> nil end)
 
-      Instrumenter.set_latest_block(last_batch.number, last_batch.timestamp)
+      if not is_nil(last_block) do
+        Instrumenter.set_latest_block(last_block.number, last_block.timestamp)
+      end
 
       async_import_remaining_block_data(
         imported,
@@ -393,14 +397,6 @@ defmodule Indexer.Block.Realtime.Fetcher do
     Optimism.handle_realtime_l2_reorg(reorg_block_number, Indexer.Fetcher.Optimism.Interop.MessageFailed)
     Indexer.Fetcher.Optimism.TransactionBatch.handle_l2_reorg(reorg_block_number)
     Indexer.Fetcher.Optimism.Withdrawal.remove(reorg_block_number)
-  end
-
-  # Removes all rows from `polygon_edge_withdrawals` and `polygon_edge_deposit_executes` tables
-  # previously written starting from the reorg block number
-  defp do_remove_assets_by_number(:polygon_edge, reorg_block) do
-    # credo:disable-for-lines:2 Credo.Check.Design.AliasUsage
-    Indexer.Fetcher.PolygonEdge.Withdrawal.remove(reorg_block)
-    Indexer.Fetcher.PolygonEdge.DepositExecute.remove(reorg_block)
   end
 
   # Removes all rows from `polygon_zkevm_bridge` table
@@ -556,6 +552,8 @@ defmodule Indexer.Block.Realtime.Fetcher do
     async_import_blobs(imported, realtime?)
     async_import_polygon_zkevm_bridge_l1_tokens(imported)
     async_import_celo_epoch_block_operations(imported, realtime?)
+    async_import_celo_accounts(imported, realtime?)
     async_import_filecoin_addresses_info(imported, realtime?)
+    async_import_signed_authorizations_statuses(imported, realtime?)
   end
 end

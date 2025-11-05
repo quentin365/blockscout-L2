@@ -11,11 +11,6 @@ defmodule BlockScoutWeb.API.V2.InternalTransactionController do
       next_page_params: 3
     ]
 
-  import BlockScoutWeb.PagingHelper,
-    only: [
-      delete_parameters_from_next_page_params: 1
-    ]
-
   import Explorer.PagingOptions, only: [default_paging_options: 0]
 
   action_fallback(BlockScoutWeb.API.V2.FallbackController)
@@ -42,7 +37,7 @@ defmodule BlockScoutWeb.API.V2.InternalTransactionController do
       {internal_transactions, next_page} = result
 
       next_page_params =
-        next_page |> next_page_params(internal_transactions, delete_parameters_from_next_page_params(params))
+        next_page |> next_page_params(internal_transactions, params)
 
       conn
       |> put_status(200)
@@ -79,7 +74,7 @@ defmodule BlockScoutWeb.API.V2.InternalTransactionController do
 
   defp transaction_hash_from_params(params) do
     with transaction_hash_string when not is_nil(transaction_hash_string) <- params["transaction_hash"],
-         {:ok, transaction_hash} <- Chain.string_to_transaction_hash(transaction_hash_string) do
+         {:ok, transaction_hash} <- Chain.string_to_full_hash(transaction_hash_string) do
       transaction_hash
     else
       nil -> nil

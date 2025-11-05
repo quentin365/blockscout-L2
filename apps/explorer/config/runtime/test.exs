@@ -2,9 +2,9 @@ import Config
 
 alias EthereumJSONRPC.Variant
 
-config :explorer, Explorer.ExchangeRates, enabled: false, store: :ets, fetch_btc_value: true
-
-config :explorer, Explorer.ExchangeRates.TokenExchangeRates, enabled: false
+config :explorer, Explorer.Market.Fetcher.Coin, enabled: false, store: :ets, fetch_btc_value: true
+config :explorer, Explorer.Market.Fetcher.History, enabled: false
+config :explorer, Explorer.Market.Fetcher.Token, enabled: false
 
 config :explorer, Explorer.Chain.Cache.BlockNumber, enabled: false
 
@@ -13,7 +13,6 @@ config :explorer, Explorer.Chain.Cache.Counters.AverageBlockTime, enabled: false
 # This historian is a GenServer whose init uses a Repo in a Task process.
 # This causes a ConnectionOwnership error
 config :explorer, Explorer.Chain.Transaction.History.Historian, enabled: false
-config :explorer, Explorer.Market.History.Historian, enabled: false
 
 for counter <- [
       Explorer.Chain.Cache.Counters.AddressesCount,
@@ -43,6 +42,11 @@ config :explorer, Explorer.Tracer, disabled?: false
 
 config :explorer, Explorer.TokenInstanceOwnerAddressMigration.Supervisor, enabled: false
 
+config :explorer, Explorer.Utility.RateLimiter, enabled: false
+
+config :explorer, Explorer.Utility.Hammer.Redis, enabled: false
+config :explorer, Explorer.Utility.Hammer.ETS, enabled: true
+
 for migrator <- [
       # Background migrations
       Explorer.Migrator.TransactionsDenormalization,
@@ -66,6 +70,12 @@ for migrator <- [
       Explorer.Migrator.SmartContractLanguage,
       Explorer.Migrator.SanitizeEmptyContractCodeAddresses,
       Explorer.Migrator.BackfillMetadataURL,
+      Explorer.Migrator.SanitizeErc1155TokenBalancesWithoutTokenIds,
+      Explorer.Migrator.ReindexDuplicatedInternalTransactions,
+      Explorer.Migrator.MergeAdjacentMissingBlockRanges,
+      Explorer.Migrator.UnescapeQuotesInTokens,
+      Explorer.Migrator.SanitizeDuplicateSmartContractAdditionalSources,
+      Explorer.Migrator.DeleteZeroValueInternalTransactions,
 
       # Heavy DB index operations
       Explorer.Migrator.HeavyDbIndexOperation.CreateLogsBlockHashIndex,
@@ -92,7 +102,10 @@ for migrator <- [
       Explorer.Migrator.HeavyDbIndexOperation.DropTransactionsFromAddressHashWithPendingIndex,
       Explorer.Migrator.HeavyDbIndexOperation.DropTransactionsToAddressHashWithPendingIndex,
       Explorer.Migrator.HeavyDbIndexOperation.CreateLogsDepositsWithdrawalsIndex,
-      Explorer.Migrator.HeavyDbIndexOperation.CreateAddressesTransactionsCountDescPartialIndex
+      Explorer.Migrator.HeavyDbIndexOperation.CreateAddressesTransactionsCountDescPartialIndex,
+      Explorer.Migrator.HeavyDbIndexOperation.CreateAddressesTransactionsCountAscCoinBalanceDescHashPartialIndex,
+      Explorer.Migrator.HeavyDbIndexOperation.CreateInternalTransactionsBlockHashTransactionIndexIndexUniqueIndex,
+      Explorer.Migrator.HeavyDbIndexOperation.CreateSmartContractAdditionalSourcesUniqueIndex
     ] do
   config :explorer, migrator, enabled: false
 end

@@ -82,6 +82,7 @@ defmodule BlockScoutWeb.API.V2.Helper do
       "is_contract" => smart_contract?,
       "name" => address_name(address),
       "is_scam" => address_marked_as_scam?(address),
+      "reputation" => (address_marked_as_scam?(address) && "scam") || "ok",
       "proxy_type" => proxy_implementations && proxy_implementations.proxy_type,
       "implementations" => Proxy.proxy_object_info(proxy_implementations),
       "is_verified" => smart_contract_verified?(address) || verified_as_proxy?(proxy_implementations),
@@ -111,6 +112,8 @@ defmodule BlockScoutWeb.API.V2.Helper do
       "hash" => Address.checksum(address_hash),
       "is_contract" => false,
       "name" => nil,
+      "is_scam" => false,
+      "reputation" => "ok",
       "proxy_type" => nil,
       "implementations" => [],
       "is_verified" => nil,
@@ -182,13 +185,13 @@ defmodule BlockScoutWeb.API.V2.Helper do
   def smart_contract_verified?(%Address{smart_contract: %NotLoaded{}}), do: nil
   def smart_contract_verified?(%Address{smart_contract: %SmartContract{}}), do: true
 
-  def market_cap(:standard, %{available_supply: available_supply, usd_value: usd_value, market_cap_usd: market_cap_usd})
-      when is_nil(available_supply) or is_nil(usd_value) do
-    max(Decimal.new(0), market_cap_usd)
+  def market_cap(:standard, %{available_supply: available_supply, fiat_value: fiat_value, market_cap: market_cap})
+      when is_nil(available_supply) or is_nil(fiat_value) do
+    max(Decimal.new(0), market_cap)
   end
 
-  def market_cap(:standard, %{available_supply: available_supply, usd_value: usd_value}) do
-    Decimal.mult(available_supply, usd_value)
+  def market_cap(:standard, %{available_supply: available_supply, fiat_value: fiat_value}) do
+    Decimal.mult(available_supply, fiat_value)
   end
 
   def market_cap(module, exchange_rate) do

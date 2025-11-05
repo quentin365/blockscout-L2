@@ -26,34 +26,20 @@ defmodule Indexer.Fetcher.Optimism.TransactionBatch do
 
   import EthereumJSONRPC, only: [fetch_blocks_by_range: 2, json_rpc: 2, quantity_to_integer: 1]
 
-  import Explorer.Helper, only: [add_0x_prefix: 1, hash_to_binary: 1, parse_integer: 1]
+  import Explorer.Helper, only: [hash_to_binary: 1, parse_integer: 1]
 
   alias Ecto.Multi
   alias EthereumJSONRPC.Block.ByHash
   alias EthereumJSONRPC.{Blocks, Contract}
   alias Explorer.{Chain, Repo}
-  alias Explorer.Chain.Beacon.Blob, as: BeaconBlob
   alias Explorer.Chain.{Block, Hash, RollupReorgMonitorQueue}
   alias Explorer.Chain.Events.Publisher
   alias Explorer.Chain.Optimism.{FrameSequence, FrameSequenceBlob}
   alias Explorer.Chain.Optimism.TransactionBatch, as: OptimismTransactionBatch
-  alias Indexer.Fetcher.Beacon.Blob
-  alias Indexer.Fetcher.Beacon.Client, as: BeaconClient
   alias Indexer.Fetcher.{Optimism, RollupL1ReorgMonitor}
   alias Indexer.Helper
   alias Indexer.Prometheus.Instrumenter
   alias Varint.LEB128
-
-  @beacon_blob_fetcher_reference_slot_eth 8_500_000
-  @beacon_blob_fetcher_reference_timestamp_eth 1_708_824_023
-  @beacon_blob_fetcher_reference_slot_sepolia 4_400_000
-  @beacon_blob_fetcher_reference_timestamp_sepolia 1_708_533_600
-  @beacon_blob_fetcher_reference_slot_holesky 1_000_000
-  @beacon_blob_fetcher_reference_timestamp_holesky 1_707_902_400
-  @beacon_blob_fetcher_slot_duration 12
-  @chain_id_eth 1
-  @chain_id_sepolia 11_155_111
-  @chain_id_holesky 17000
 
   @fetcher_name :optimism_transaction_batches
 
@@ -145,8 +131,9 @@ defmodule Indexer.Fetcher.Optimism.TransactionBatch do
        %{
          batch_inbox: batch_inbox,
          batch_submitter: batch_submitter,
-         eip4844_blobs_api_url: trim_url(env[:eip4844_blobs_api_url]),
-         celestia_blobs_api_url: trim_url(env[:celestia_blobs_api_url]),
+         eip4844_blobs_api_url: Helper.trim_url(env[:eip4844_blobs_api_url]),
+         celestia_blobs_api_url: Helper.trim_url(env[:celestia_blobs_api_url]),
+         alt_da_server_url: Helper.trim_url(env[:alt_da_server_url]),
          block_check_interval: block_check_interval,
          start_block: start_block,
          end_block: last_safe_block,
@@ -230,6 +217,7 @@ defmodule Indexer.Fetcher.Optimism.TransactionBatch do
   # - `batch_submitter`: L1 address which sends L1 batch transactions to the `batch_inbox`
   # - `eip4844_blobs_api_url`: URL of Blockscout Blobs API to get EIP-4844 blobs
   # - `celestia_blobs_api_url`: URL of the server where Celestia blobs can be read from
+  # - `alt_da_server_url`: URL of Alt-DA server where keccak commitment data can be read from
   # - `block_check_interval`: time interval for checking latest block number
   # - `start_block`: start block number of the block range
   # - `end_block`: end block number of the block range
@@ -248,6 +236,7 @@ defmodule Indexer.Fetcher.Optimism.TransactionBatch do
           batch_submitter: batch_submitter,
           eip4844_blobs_api_url: eip4844_blobs_api_url,
           celestia_blobs_api_url: celestia_blobs_api_url,
+          alt_da_server_url: alt_da_server_url,
           block_check_interval: block_check_interval,
           start_block: start_block,
           end_block: end_block,
@@ -290,7 +279,7 @@ defmodule Indexer.Fetcher.Optimism.TransactionBatch do
                 {genesis_block_l2, block_duration},
                 incomplete_channels_acc,
                 {json_rpc_named_arguments, json_rpc_named_arguments_l2},
-                {eip4844_blobs_api_url, celestia_blobs_api_url, chain_id_l1},
+                {eip4844_blobs_api_url, celestia_blobs_api_url, alt_da_server_url, chain_id_l1},
                 Helper.infinite_retries_number()
               )
 
@@ -309,7 +298,8 @@ defmodule Indexer.Fetcher.Optimism.TransactionBatch do
                 timeout: :infinity
               })
 
-            remove_prev_frame_sequences(inserted)
+            removed_sequence_ids = remove_prev_frame_sequences(inserted)
+            sequences = Enum.reject(sequences, fn s -> s.id in removed_sequence_ids end)
             set_frame_sequences_view_ready(sequences)
 
             last_batch =
@@ -323,8 +313,7 @@ defmodule Indexer.Fetcher.Optimism.TransactionBatch do
 
             Publisher.broadcast(
               %{
-                new_optimism_batches:
-                  Enum.map(sequences, &FrameSequence.batch_by_internal_id(&1.id, include_blobs?: false))
+                new_optimism_batches: Enum.map(sequences, &FrameSequence.batch_by_number(&1.id, include_blobs?: false))
               },
               :realtime
             )
@@ -386,11 +375,12 @@ defmodule Indexer.Fetcher.Optimism.TransactionBatch do
     {:noreply, state}
   end
 
-  defp get_block_numbers_by_hashes([], _json_rpc_named_arguments_l2) do
+  @doc false
+  def get_block_numbers_by_hashes([], _json_rpc_named_arguments_l2) do
     %{}
   end
 
-  defp get_block_numbers_by_hashes(hashes, json_rpc_named_arguments_l2) do
+  def get_block_numbers_by_hashes(hashes, json_rpc_named_arguments_l2) do
     query =
       from(
         b in Block,
@@ -410,7 +400,8 @@ defmodule Indexer.Fetcher.Optimism.TransactionBatch do
       |> Enum.filter(fn hash -> is_nil(Map.get(number_by_hash, hash)) end)
       |> Enum.with_index()
       |> Enum.map(fn {hash, id} ->
-        ByHash.request(%{hash: add_0x_prefix(hash), id: id}, false)
+        {:ok, hash} = Hash.Full.cast(hash)
+        ByHash.request(%{hash: hash, id: id}, false)
       end)
 
     chunk_size = 50
@@ -591,7 +582,7 @@ defmodule Indexer.Fetcher.Optimism.TransactionBatch do
        ) do
     blob_versioned_hashes
     |> Enum.reduce([], fn blob_hash, inputs_acc ->
-      with {:ok, response} <- http_get_request(blobs_api_url <> "/" <> blob_hash),
+      with {:ok, response} <- Helper.http_get_request(blobs_api_url <> "/" <> blob_hash),
            blob_data = Map.get(response, "blob_data"),
            false <- is_nil(blob_data) do
         # read the data from Blockscout API
@@ -638,65 +629,11 @@ defmodule Indexer.Fetcher.Optimism.TransactionBatch do
          inputs_acc,
          chain_id_l1
        ) do
-    beacon_config =
-      case chain_id_l1 do
-        @chain_id_eth ->
-          %{
-            reference_slot: @beacon_blob_fetcher_reference_slot_eth,
-            reference_timestamp: @beacon_blob_fetcher_reference_timestamp_eth,
-            slot_duration: @beacon_blob_fetcher_slot_duration
-          }
+    blob = Helper.get_eip4844_blob_from_beacon_node(blob_hash, block_timestamp, chain_id_l1)
 
-        @chain_id_sepolia ->
-          %{
-            reference_slot: @beacon_blob_fetcher_reference_slot_sepolia,
-            reference_timestamp: @beacon_blob_fetcher_reference_timestamp_sepolia,
-            slot_duration: @beacon_blob_fetcher_slot_duration
-          }
-
-        @chain_id_holesky ->
-          %{
-            reference_slot: @beacon_blob_fetcher_reference_slot_holesky,
-            reference_timestamp: @beacon_blob_fetcher_reference_timestamp_holesky,
-            slot_duration: @beacon_blob_fetcher_slot_duration
-          }
-
-        _ ->
-          :indexer
-          |> Application.get_env(Blob)
-          |> Keyword.take([:reference_slot, :reference_timestamp, :slot_duration])
-          |> Enum.into(%{})
-      end
-
-    {:ok, fetched_blobs} =
-      block_timestamp
-      |> DateTime.to_unix()
-      |> Blob.timestamp_to_slot(beacon_config)
-      |> BeaconClient.get_blob_sidecars()
-
-    blobs = Map.get(fetched_blobs, "data", [])
-
-    if Enum.empty?(blobs) do
-      raise "Empty data"
-    end
-
-    decoded_blob_data =
-      blobs
-      |> Enum.find(fn b ->
-        b
-        |> Map.get("kzg_commitment", "0x")
-        |> hash_to_binary()
-        |> BeaconBlob.hash()
-        |> Hash.to_string()
-        |> Kernel.==(blob_hash)
-      end)
-      |> Map.get("blob")
-      |> hash_to_binary()
-      |> OptimismTransactionBatch.decode_eip4844_blob()
-
-    if is_nil(decoded_blob_data) do
-      raise "Invalid blob"
-    else
+    with false <- is_nil(blob),
+         decoded_blob_data = OptimismTransactionBatch.decode_eip4844_blob(blob),
+         {:blob_data_invalid, false} <- {:blob_data_invalid, is_nil(decoded_blob_data)} do
       Logger.info(
         "The input for transaction #{transaction_hash} is taken from the Beacon Node. Blob hash: #{blob_hash}"
       )
@@ -707,37 +644,59 @@ defmodule Indexer.Fetcher.Optimism.TransactionBatch do
       }
 
       [input | inputs_acc]
-    end
-  rescue
-    reason ->
-      Logger.warning("Cannot decode the blob #{blob_hash} taken from the Beacon Node. Reason: #{inspect(reason)}")
+    else
+      true ->
+        inputs_acc
 
-      inputs_acc
+      {:blob_data_invalid, true} ->
+        Logger.warning("Cannot decode invalid blob #{blob_hash} taken from the Beacon Node.")
+        inputs_acc
+    end
   end
 
-  defp celestia_blob_to_input("0x" <> transaction_input, transaction_hash, blobs_api_url) do
+  # Gets Celestia blob data & metadata by L1 transaction input (encoding blob's height and commitment).
+  # The data is read from the remote `da-indexer` service.
+  #
+  # ## Parameters
+  # - `transaction_input`: The contents of transaction `input` field.
+  # - `offset`: Offset (in bytes) within the `transaction_input` where blob's height is encoded.
+  # - `transaction_hash`: The L1 transaction hash for logging purposes.
+  # - `blobs_api_url`: The URL to `da-indexer` API.
+  #
+  # ## Returns
+  # - A list with a map containing blob's data and metadata.
+  # - An empty list in case of an error (`da-indexer` didn't respond, URL is not defined, or transaction input is incorrect).
+  @spec celestia_blob_to_input(binary(), non_neg_integer(), String.t(), String.t()) :: [
+          %{
+            :bytes => binary(),
+            :celestia_blob_metadata => %{
+              :height => non_neg_integer(),
+              :namespace => String.t(),
+              :commitment => String.t()
+            }
+          }
+        ]
+  defp celestia_blob_to_input("0x" <> transaction_input, offset, transaction_hash, blobs_api_url) do
     transaction_input
     |> Base.decode16!(case: :mixed)
-    |> celestia_blob_to_input(transaction_hash, blobs_api_url)
+    |> celestia_blob_to_input(offset, transaction_hash, blobs_api_url)
   end
 
-  defp celestia_blob_to_input(transaction_input, _transaction_hash, blobs_api_url)
-       when byte_size(transaction_input) == 1 + 8 + 32 and blobs_api_url != "" do
-    # the first byte encodes Celestia sign 0xCE
-
-    # the next 8 bytes encode little-endian Celestia blob height
+  defp celestia_blob_to_input(transaction_input, offset, _transaction_hash, blobs_api_url)
+       when byte_size(transaction_input) == offset + 8 + 32 and blobs_api_url != "" do
+    # 8 bytes after alt-da signature encode little-endian Celestia blob height
     height =
       transaction_input
-      |> binary_part(1, 8)
+      |> binary_part(offset, 8)
       |> :binary.decode_unsigned(:little)
 
     # the next 32 bytes contain the commitment
-    commitment = binary_part(transaction_input, 1 + 8, 32)
+    commitment = binary_part(transaction_input, offset + 8, 32)
     commitment_string = Base.encode16(commitment, case: :lower)
 
     url = blobs_api_url <> "?height=#{height}&commitment=" <> commitment_string
 
-    with {:ok, response} <- http_get_request(url),
+    with {:ok, response} <- Helper.http_get_request(url),
          namespace = Map.get(response, "namespace"),
          data = Map.get(response, "data"),
          true <- !is_nil(namespace) and !is_nil(data) do
@@ -765,15 +724,78 @@ defmodule Indexer.Fetcher.Optimism.TransactionBatch do
     end
   end
 
-  defp celestia_blob_to_input(_transaction_input, transaction_hash, blobs_api_url) when blobs_api_url != "" do
+  defp celestia_blob_to_input(_transaction_input, _offset, transaction_hash, blobs_api_url) when blobs_api_url != "" do
     Logger.error("L1 transaction with Celestia commitment has incorrect input length. Tx hash: #{transaction_hash}")
 
     []
   end
 
-  defp celestia_blob_to_input(_transaction_input, _transaction_hash, "") do
+  defp celestia_blob_to_input(_transaction_input, _offset, _transaction_hash, "") do
     Logger.error(
       "Cannot read Celestia blobs from the server as the API URL is not defined. Please, check INDEXER_OPTIMISM_L1_BATCH_CELESTIA_BLOBS_API_URL env variable."
+    )
+
+    []
+  end
+
+  # Gets Alt-DA data & commitment hash by L1 transaction input (encoding the commitment).
+  # The data is then read from the remote DA server.
+  #
+  # ## Parameters
+  # - `transaction_input`: The contents of transaction `input` field.
+  # - `transaction_hash`: The L1 transaction hash for logging purposes.
+  # - `da_server_url`: The URL to DA server implementing a get request.
+  #
+  # ## Returns
+  # - A list with a map containing commitment data and hash.
+  # - An empty list in case of an error (DA server didn't respond, URL is not defined, or transaction input is incorrect).
+  @spec alt_da_commitment_to_input(binary(), String.t(), String.t()) :: [
+          %{
+            :bytes => binary(),
+            :alt_da_commitment => String.t()
+          }
+        ]
+  defp alt_da_commitment_to_input("0x" <> transaction_input, transaction_hash, da_server_url) do
+    transaction_input
+    |> Base.decode16!(case: :mixed)
+    |> alt_da_commitment_to_input(transaction_hash, da_server_url)
+  end
+
+  defp alt_da_commitment_to_input(transaction_input, _transaction_hash, da_server_url)
+       when byte_size(transaction_input) == 2 + 32 and da_server_url != "" do
+    commitment_for_url = binary_part(transaction_input, 1, 1 + 32)
+    commitment_for_url_string = "0x" <> Base.encode16(commitment_for_url, case: :lower)
+
+    url = da_server_url <> "/" <> commitment_for_url_string
+
+    with {:ok, data} <- Helper.http_get_request(url, :raw),
+         true <- byte_size(data) > 0 do
+      [
+        %{
+          bytes: data,
+          alt_da_commitment: "0x" <> Base.encode16(transaction_input, case: :lower)
+        }
+      ]
+    else
+      false ->
+        Logger.error("DA server response is empty for the request #{url}")
+
+        []
+
+      _ ->
+        Logger.error("Cannot read a response from DA server for the request #{url}")
+        []
+    end
+  end
+
+  defp alt_da_commitment_to_input(_transaction_input, transaction_hash, da_server_url) when da_server_url != "" do
+    Logger.error("L1 transaction with Alt-DA commitment has incorrect input length. Tx hash: #{transaction_hash}")
+    []
+  end
+
+  defp alt_da_commitment_to_input(_transaction_input, _transaction_hash, "") do
+    Logger.error(
+      "Cannot read data from the DA server as its URL is not defined. Please, check INDEXER_OPTIMISM_L1_BATCH_ALT_DA_SERVER_URL env variable."
     )
 
     []
@@ -785,7 +807,7 @@ defmodule Indexer.Fetcher.Optimism.TransactionBatch do
          {genesis_block_l2, block_duration},
          incomplete_channels,
          json_rpc_named_arguments_l2,
-         {eip4844_blobs_api_url, celestia_blobs_api_url, chain_id_l1}
+         {eip4844_blobs_api_url, celestia_blobs_api_url, alt_da_server_url, chain_id_l1}
        ) do
     transactions_filtered
     |> Enum.reduce({:ok, incomplete_channels, [], [], []}, fn transaction,
@@ -794,7 +816,7 @@ defmodule Indexer.Fetcher.Optimism.TransactionBatch do
       inputs =
         cond do
           transaction.type == 3 ->
-            # this is EIP-4844 transaction, so we get the inputs from the blobs
+            # this is EIP-4844 transaction, so we get the inputs from EIP-4844 blobs
             block_timestamp = get_block_timestamp_by_number(transaction.block_number, blocks_params)
 
             eip4844_blobs_to_inputs(
@@ -805,9 +827,17 @@ defmodule Indexer.Fetcher.Optimism.TransactionBatch do
               chain_id_l1
             )
 
-          first_byte(transaction.input) == 0xCE ->
+          commitment_alt_da_signature(transaction.input) == 0x01010C ->
             # this is Celestia DA transaction, so we get the data from Celestia blob
-            celestia_blob_to_input(transaction.input, transaction.hash, celestia_blobs_api_url)
+            celestia_blob_to_input(transaction.input, 3, transaction.hash, celestia_blobs_api_url)
+
+          commitment_alt_da_signature(transaction.input) == 0x0100 ->
+            # this is Alt-DA transaction with a keccak commitment, so we get the data from a DA server
+            alt_da_commitment_to_input(transaction.input, transaction.hash, alt_da_server_url)
+
+          first_byte(transaction.input) == 0xCE ->
+            # backward compatibility with OP Celestia Raspberry
+            celestia_blob_to_input(transaction.input, 1, transaction.hash, celestia_blobs_api_url)
 
           true ->
             # this is calldata transaction, so the data is in the transaction input
@@ -860,7 +890,8 @@ defmodule Indexer.Fetcher.Optimism.TransactionBatch do
         block_timestamp: block_timestamp,
         transaction_hash: transaction.hash,
         eip4844_blob_hash: Map.get(input, :eip4844_blob_hash),
-        celestia_blob_metadata: Map.get(input, :celestia_blob_metadata)
+        celestia_blob_metadata: Map.get(input, :celestia_blob_metadata),
+        alt_da_commitment: Map.get(input, :alt_da_commitment)
       })
 
     l1_timestamp =
@@ -951,6 +982,21 @@ defmodule Indexer.Fetcher.Optimism.TransactionBatch do
                     key: :crypto.hash(:sha256, height <> commitment),
                     type: :celestia,
                     metadata: frame.celestia_blob_metadata,
+                    l1_transaction_hash: frame.transaction_hash,
+                    l1_timestamp: frame.block_timestamp,
+                    frame_sequence_id: frame_sequence_id
+                  }
+                ]
+
+            !is_nil(Map.get(frame, :alt_da_commitment)) ->
+              # credo:disable-for-next-line /Credo.Check.Refactor.AppendSingleItem/
+              new_blobs_acc ++
+                [
+                  %{
+                    id: next_blob_id,
+                    key: Base.decode16!(String.trim_leading(frame.alt_da_commitment, "0x"), case: :mixed),
+                    type: :alt_da,
+                    metadata: %{commitment: frame.alt_da_commitment},
                     l1_transaction_hash: frame.transaction_hash,
                     l1_timestamp: frame.block_timestamp,
                     frame_sequence_id: frame_sequence_id
@@ -1058,45 +1104,6 @@ defmodule Indexer.Fetcher.Optimism.TransactionBatch do
   @spec requires_l1_reorg_monitor?() :: boolean()
   def requires_l1_reorg_monitor? do
     Optimism.requires_l1_reorg_monitor?()
-  end
-
-  defp http_get_request(url, attempts_done \\ 0) do
-    recv_timeout = 5_000
-    connect_timeout = 8_000
-    client = Tesla.client([{Tesla.Middleware.Timeout, timeout: recv_timeout}], Tesla.Adapter.Mint)
-
-    case Tesla.get(client, url, opts: [adapter: [timeout: recv_timeout, transport_opts: [timeout: connect_timeout]]]) do
-      {:ok, %{body: body, status: 200}} ->
-        Jason.decode(body)
-
-      {:ok, %{body: body, status: _}} ->
-        {:error, body}
-
-      {:error, error} ->
-        old_truncate = Application.get_env(:logger, :truncate)
-        Logger.configure(truncate: :infinity)
-
-        Logger.error(fn ->
-          [
-            "Error while sending request to Blobs API: #{url}: ",
-            inspect(error, limit: :infinity, printable_limit: :infinity)
-          ]
-        end)
-
-        Logger.configure(truncate: old_truncate)
-
-        # retry to send the request
-        attempts_done = attempts_done + 1
-
-        if attempts_done < 3 do
-          # wait up to 20 minutes and then retry
-          :timer.sleep(min(3000 * Integer.pow(2, attempts_done - 1), 1_200_000))
-          Logger.info("Retry to send the request to #{url} ...")
-          http_get_request(url, attempts_done)
-        else
-          {:error, "Error while sending request to Blobs API"}
-        end
-    end
   end
 
   defp channel_complete?(channel) do
@@ -1422,6 +1429,8 @@ defmodule Indexer.Fetcher.Optimism.TransactionBatch do
       # can still reference to the `op_frame_sequences` table
       _ -> nil
     end
+
+    ids
   end
 
   defp set_frame_sequences_view_ready(sequences) do
@@ -1527,24 +1536,42 @@ defmodule Indexer.Fetcher.Optimism.TransactionBatch do
     end
   end
 
+  # Retrieves Alt-DA signature from L1 transaction input as described in
+  # https://github.com/ethereum-optimism/specs/blob/main/specs/experimental/alt-da.md#example-commitments
+  #
+  # ## Parameters
+  # - `transaction_input`: The contents of transaction `input` field.
+  #
+  # ## Returns
+  # - An integer encoding the signature.
+  # - `nil` if the input doesn't contain Alt-DA signature.
+  @spec commitment_alt_da_signature(binary()) :: non_neg_integer() | nil
+  defp commitment_alt_da_signature("0x" <> transaction_input) do
+    transaction_input
+    |> Base.decode16!(case: :mixed)
+    |> commitment_alt_da_signature()
+  end
+
+  defp commitment_alt_da_signature(<<0, _rest::binary>>), do: 0x00
+  defp commitment_alt_da_signature(<<1, 0, _rest::binary>>), do: 0x0100
+
+  defp commitment_alt_da_signature(<<1, 1, da_layer_byte::size(8), _rest::binary>>),
+    do: :binary.decode_unsigned(<<0x01, 0x01, da_layer_byte>>)
+
+  defp commitment_alt_da_signature(_), do: nil
+
   defp first_byte("0x" <> transaction_input) do
     transaction_input
     |> Base.decode16!(case: :mixed)
     |> first_byte()
   end
 
-  defp first_byte(<<version_byte::size(8), _rest::binary>>) do
-    version_byte
+  defp first_byte(<<first_byte::size(8), _rest::binary>>) do
+    first_byte
   end
 
   defp first_byte(_transaction_input) do
     nil
-  end
-
-  defp trim_url(url) do
-    url
-    |> String.trim()
-    |> String.trim_trailing("/")
   end
 
   defp zlib_decompress(bytes) do

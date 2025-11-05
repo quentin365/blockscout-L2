@@ -15,7 +15,6 @@ defmodule Explorer.Chain.Import.Runner.InternalTransactions do
     Hash,
     Import,
     InternalTransaction,
-    PendingBlockOperation,
     PendingOperationsHelper,
     PendingTransactionOperation,
     Transaction
@@ -324,14 +323,11 @@ defmodule Explorer.Chain.Import.Runner.InternalTransactions do
     case PendingOperationsHelper.pending_operations_type() do
       "blocks" ->
         query =
-          from(
-            pending_ops in PendingBlockOperation,
-            where: pending_ops.block_hash in ^block_hashes,
-            select: pending_ops.block_hash,
-            # Enforce PendingBlockOperation ShareLocks order (see docs: sharelocks.md)
-            order_by: [asc: pending_ops.block_hash],
-            lock: "FOR UPDATE"
-          )
+          block_hashes
+          |> PendingOperationsHelper.block_hash_in_query()
+          |> select([pbo], pbo.block_hash)
+          |> order_by([pbo], asc: pbo.block_hash)
+          |> lock("FOR UPDATE")
 
         {:ok, {:block_hashes, repo.all(query)}}
 
@@ -460,6 +456,7 @@ defmodule Explorer.Chain.Import.Runner.InternalTransactions do
         entry
         |> Map.put(:block_hash, block_hash)
         |> Map.put(:block_index, index)
+        |> sanitize_error()
       end)
     else
       []
@@ -497,6 +494,21 @@ defmodule Explorer.Chain.Import.Runner.InternalTransactions do
     else
       {:ok, internal_transactions}
     end
+  end
+
+  defp sanitize_error(entry) do
+    error = Map.get(entry, :error)
+
+    sanitized_error =
+      if is_binary(error) and not String.printable?(error) do
+        error
+        |> inspect(binaries: :as_strings)
+        |> String.trim("\"")
+      else
+        error
+      end
+
+    Map.put(entry, :error, sanitized_error)
   end
 
   def defer_internal_transactions_primary_key(repo) do
@@ -829,10 +841,7 @@ defmodule Explorer.Chain.Import.Runner.InternalTransactions do
             |> MapSet.difference(MapSet.new(invalid_block_hashes))
             |> MapSet.to_list()
 
-          from(
-            pending_ops in PendingBlockOperation,
-            where: pending_ops.block_hash in ^valid_block_hashes
-          )
+          PendingOperationsHelper.block_hash_in_query(valid_block_hashes)
 
         {:transaction_hashes, transaction_hashes} ->
           from(

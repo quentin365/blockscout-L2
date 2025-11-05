@@ -2,6 +2,7 @@ defmodule Explorer.SmartContract.Solidity.PublishHelper do
   @moduledoc """
     Module responsible for preparing and publishing smart contracts
   """
+  require Logger
 
   use Utils.RuntimeEnvHelper,
     eth_bytecode_db_enabled?: [
@@ -47,7 +48,9 @@ defmodule Explorer.SmartContract.Solidity.PublishHelper do
           :on_demand
         )
 
-      _ ->
+      error ->
+        Logger.error("Unexpected error during verification: #{inspect(error)}")
+
         EventsPublisher.broadcast(
           prepare_verification_error("Unexpected error", address_hash_string, conn, api_v2?),
           :on_demand
@@ -163,10 +166,10 @@ defmodule Explorer.SmartContract.Solidity.PublishHelper do
     ]
   end
 
-  def check_and_verify(address_hash_string) do
+  def check_and_verify(address_hash_string, options \\ []) do
     cond do
       eth_bytecode_db_enabled?() ->
-        LookUpSmartContractSourcesOnDemand.trigger_fetch(address_hash_string)
+        LookUpSmartContractSourcesOnDemand.trigger_fetch(options[:ip], address_hash_string)
 
       sourcify_enabled?() ->
         address_hash_string
